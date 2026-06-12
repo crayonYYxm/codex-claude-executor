@@ -1,0 +1,37 @@
+{
+  "name": "codex-claude-executor",
+  "version": "0.1.0",
+  "description": "Let Codex plan and delegate confirmed implementation work to local Claude Code.",
+  "author": {
+    "name": "xumeng",
+    "url": "https://github.com/crayonYYxm"
+  },
+  "homepage": "https://github.com/crayonYYxm/codex-claude-executor",
+  "repository": "https://github.com/crayonYYxm/codex-claude-executor",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "claude-code",
+    "mcp",
+    "delegation"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Claude Executor",
+    "shortDescription": "Codex plans, Claude Code executes",
+    "longDescription": "Plan implementation work in Codex, confirm permissions, delegate execution to local Claude Code, then review the resulting changes.",
+    "developerName": "xumeng",
+    "category": "Productivity",
+    "websiteURL": "https://github.com/crayonYYxm/codex-claude-executor",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Plan this task, then delegate the confirmed plan to Claude Code.",
+      "Have Claude Code execute this plan, then review the changes."
+    ],
+    "brandColor": "#D97757"
+  }
+}

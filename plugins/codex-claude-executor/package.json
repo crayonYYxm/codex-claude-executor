@@ -1,0 +1,42 @@
+{
+  "name": "codex-claude-executor",
+  "version": "0.1.0",
+  "description": "Let Codex plan and delegate confirmed implementation work to local Claude Code.",
+  "type": "module",
+  "main": "./dist/mcp-server.mjs",
+  "scripts": {
+    "clean": "rm -rf build dist",
+    "build": "tsc -p tsconfig.json",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "bundle": "esbuild src/mcp-server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/mcp-server.mjs",
+    "verify": "npm run test && npm run typecheck:test && npm run build && npm run bundle"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "keywords": [
+    "codex",
+    "claude-code",
+    "mcp",
+    "delegation"
+  ],
+  "author": {
+    "name": "xumeng",
+    "url": "https://github.com/crayonYYxm"
+  },
+  "homepage": "https://github.com/crayonYYxm/codex-claude-executor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crayonYYxm/codex-claude-executor.git",
+    "directory": "plugins/codex-claude-executor"
+  },
+  "license": "MIT"
+}

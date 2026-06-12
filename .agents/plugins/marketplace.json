@@ -1,0 +1,20 @@
+{
+  "name": "crayonyyxm",
+  "interface": {
+    "displayName": "crayonYYxm Plugins"
+  },
+  "plugins": [
+    {
+      "name": "codex-claude-executor",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-claude-executor"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
