@@ -25,15 +25,21 @@ describe("permissions", () => {
       expect(FIXED_ALLOWED_TOOLS).toContain("Bash(git rev-parse *)");
     });
 
-    it("contains common build and test commands", () => {
+    it("contains common build, test, and lint commands", () => {
       expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm test)");
-      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm test *)");
-      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run test)");
-      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run test *)");
       expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run build)");
-      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run build *)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run lint *)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run typecheck)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run verify)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(npm run check *)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(pnpm test)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(pnpm run lint)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(pnpm run verify)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(yarn build)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(yarn check *)");
       expect(FIXED_ALLOWED_TOOLS).toContain("Bash(pytest)");
-      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(pytest *)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(cargo test)");
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash(go test *)");
     });
 
     it("does not contain dangerous commands", () => {

@@ -1,7 +1,7 @@
 {
   "name": "codex-claude-executor",
-  "version": "0.1.0+codex.20260613033313",
-  "description": "Let Codex plan and delegate confirmed implementation work to local Claude Code.",
+  "version": "0.1.0+codex.20260613110844",
+  "description": "Let Codex plan, delegate to Claude Code, and autonomously verify and repair implementation work.",
   "author": {
     "name": "xumeng",
     "url": "https://github.com/crayonYYxm"
@@ -19,8 +19,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Claude Executor",
-    "shortDescription": "Codex plans, Claude Code executes",
-    "longDescription": "Plan implementation work in Codex, confirm permissions, delegate execution to local Claude Code, then review the resulting changes. Supports a claude_write_only mode when Codex should stay in a planner/reviewer role and Claude should perform all code edits.",
+    "shortDescription": "Codex plans and verifies, Claude Code executes",
+    "longDescription": "Codex plans and verifies implementation work while a persistent Claude Code worker edits files, runs code checks, survives MCP restarts, and retries stalled executions. Codex automatically delegates focused repairs when verification fails.",
     "developerName": "xumeng",
     "category": "Productivity",
     "websiteURL": "https://github.com/crayonYYxm/codex-claude-executor",
@@ -29,9 +29,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Plan this task, then delegate the confirmed plan to Claude Code.",
-      "Have Claude Code execute this plan, then review the changes.",
-      "Use claude_write_only when Codex should stay in a planner/reviewer role and Claude should make all code edits."
+      "Plan this task, delegate implementation and code checks to Claude Code, then independently verify the result.",
+      "Use the persistent Claude worker and automatically delegate focused repairs until verification passes.",
+      "Keep previews and browser checks in Codex while Claude performs all code edits and code-level checks."
     ],
     "brandColor": "#D97757"
   }

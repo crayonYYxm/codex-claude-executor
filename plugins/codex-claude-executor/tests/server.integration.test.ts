@@ -2,14 +2,25 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import * as path from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const FAKE_CLAUDE = path.join(__dirname, "fixtures", "fake-claude.mjs");
 const MCP_SERVER = path.join(PROJECT_ROOT, "dist", "mcp-server.mjs");
+const SHARED_JOB_ROOT = fs.mkdtempSync(
+  path.join(os.tmpdir(), "server-integration-shared-")
+);
 
-async function createClient(mode: string) {
+async function createClient(
+  mode: string,
+  extraEnv: Record<string, string> = {}
+) {
+  const jobRoot =
+    extraEnv.CLAUDE_EXECUTOR_JOB_ROOT ??
+    fs.mkdtempSync(path.join(os.tmpdir(), `server-integration-${mode}-`));
   const transport = new StdioClientTransport({
     command: "node",
     args: [MCP_SERVER],
@@ -17,6 +28,8 @@ async function createClient(mode: string) {
       ...process.env,
       CLAUDE_BIN: FAKE_CLAUDE,
       FAKE_CLAUDE_MODE: mode,
+      CLAUDE_EXECUTOR_JOB_ROOT: jobRoot,
+      ...extraEnv,
     },
   });
 
@@ -42,6 +55,7 @@ describe("MCP Server Integration", () => {
         ...process.env,
         CLAUDE_BIN: FAKE_CLAUDE,
         FAKE_CLAUDE_MODE: "success",
+        CLAUDE_EXECUTOR_JOB_ROOT: SHARED_JOB_ROOT,
       },
     });
 
@@ -56,6 +70,7 @@ describe("MCP Server Integration", () => {
 
   afterAll(async () => {
     await client?.close();
+    fs.rmSync(SHARED_JOB_ROOT, { recursive: true, force: true });
   });
 
   it("lists sync and async execution tools", async () => {
@@ -159,6 +174,29 @@ describe("MCP Server Integration", () => {
     expect(result.isError).toBe(true);
   });
 
+  it("accepts zero timeout to disable the Claude subprocess deadline", async () => {
+    const { client } = await createClient("slow-success");
+    try {
+      const result = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Run without a hard timeout",
+          timeoutSeconds: 0,
+        },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const data = JSON.parse(
+        (result.content as Array<{ type: string; text: string }>)[0].text
+      );
+      expect(data.status).toBe("running");
+      expect(data.timeoutSeconds).toBe(0);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("handles rapid sequential execute_plan calls", async () => {
     // Test that sequential calls work correctly (lock is released between calls)
     const result1 = await client.callTool({
@@ -184,6 +222,158 @@ describe("MCP Server Integration", () => {
 });
 
 describe("MCP Server async execution lifecycle", () => {
+  it("recovers a detached job after the MCP server restarts", async () => {
+    const jobRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "server-integration-restart-")
+    );
+    const first = await createClient("timeout", {
+      CLAUDE_EXECUTOR_JOB_ROOT: jobRoot,
+    });
+    let jobId = "";
+    try {
+      const startResult = await first.client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Persistent job",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+      jobId = startData.jobId;
+      await first.client.close();
+
+      const second = await createClient("timeout", {
+        CLAUDE_EXECUTOR_JOB_ROOT: jobRoot,
+      });
+      try {
+        const statusResult = await second.client.callTool({
+          name: "get_execution_status",
+          arguments: { jobId },
+        });
+        const statusData = JSON.parse(
+          (statusResult.content as Array<{ type: string; text: string }>)[0].text
+        );
+        expect(["running", "restarting"]).toContain(statusData.status);
+        expect(statusData.workerPid).toBeTruthy();
+        expect(statusData.lastActivityAt).toBeTruthy();
+
+        await second.client.callTool({
+          name: "cancel_execution",
+          arguments: { jobId },
+        });
+      } finally {
+        await second.client.close();
+      }
+    } finally {
+      if (jobId) {
+        const statusPath = path.join(jobRoot, jobId, "status.json");
+        const status = JSON.parse(fs.readFileSync(statusPath, "utf-8"));
+        if (status.workerPid) {
+          try {
+            process.kill(status.workerPid, "SIGKILL");
+          } catch {}
+        }
+      }
+      fs.rmSync(jobRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("exposes the latest readable Claude progress in job status", async () => {
+    const { client } = await createClient("stream-progress");
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Progress plan",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const statusResult = await client.callTool({
+        name: "get_execution_status",
+        arguments: { jobId: startData.jobId },
+      });
+      const statusData = JSON.parse(
+        (statusResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      expect(statusData.progress).toBeTruthy();
+      expect(statusData.progress.eventCount).toBeGreaterThan(0);
+      expect(statusData.progress.message).toMatch(
+        /Claude attempt|Claude started|Using Write|Completed Write/
+      );
+      expect(statusData.progress.updatedAt).toBeTruthy();
+
+      for (let i = 0; i < 10; i++) {
+        const pollResult = await client.callTool({
+          name: "get_execution_status",
+          arguments: { jobId: startData.jobId },
+        });
+        const finalData = JSON.parse(
+          (pollResult.content as Array<{ type: string; text: string }>)[0].text
+        );
+        if (finalData.status !== "running") {
+          expect(finalData.status).toBe("completed");
+          expect(finalData.progress.message).toBe("Claude finished");
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      throw new Error("Progress job did not complete");
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("returns a running job before a long execute_plan call reaches the client timeout", async () => {
+    const { client } = await createClient("slow-success", {
+      CLAUDE_EXECUTOR_SYNC_WAIT_MS: "50",
+    });
+    try {
+      const startedAt = Date.now();
+      const executeResult = await client.callTool({
+        name: "execute_plan",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Plan that exceeds the synchronous wait budget",
+        },
+      });
+      const elapsedMs = Date.now() - startedAt;
+      const executeData = JSON.parse(
+        (executeResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      expect(executeResult.isError).toBeFalsy();
+      expect(executeData.status).toBe("running");
+      expect(executeData.jobId).toBeTruthy();
+      expect(elapsedMs).toBeLessThan(300);
+
+      let finalData = executeData;
+      for (let i = 0; i < 10 && finalData.status === "running"; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const pollResult = await client.callTool({
+          name: "get_execution_status",
+          arguments: { jobId: executeData.jobId },
+        });
+        finalData = JSON.parse(
+          (pollResult.content as Array<{ type: string; text: string }>)[0].text
+        );
+      }
+
+      expect(finalData.status).toBe("completed");
+      expect(finalData.result.status).toBe("completed");
+    } finally {
+      await client.close();
+    }
+  });
+
   it("starts a job, exposes status, and completes with a stored result", async () => {
     const { client } = await createClient("slow-success");
     try {
@@ -228,7 +418,9 @@ describe("MCP Server async execution lifecycle", () => {
       expect(finalData.executionMode).toBe("claude_write_only");
       expect(finalData.result.status).toBe("completed");
       expect(finalData.result.executionMode).toBe("claude_write_only");
-      expect(finalData.result.parsedOutput.status).toBe("success");
+      expect(finalData.result.parsedOutput.structured_output.status).toBe(
+        "success"
+      );
     } finally {
       await client.close();
     }

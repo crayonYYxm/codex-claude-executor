@@ -1,15 +1,16 @@
 {
   "name": "codex-claude-executor",
   "version": "0.1.0",
-  "description": "Let Codex plan and delegate confirmed implementation work to local Claude Code.",
+  "description": "Let Codex plan, delegate to Claude Code, and autonomously verify and repair implementation work.",
   "type": "module",
   "main": "./dist/mcp-server.mjs",
   "scripts": {
     "clean": "rm -rf build dist",
     "build": "tsc -p tsconfig.json",
     "typecheck:test": "tsc -p tsconfig.test.json",
+    "pretest": "npm run bundle",
     "test": "vitest run",
-    "bundle": "esbuild src/mcp-server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/mcp-server.mjs",
+    "bundle": "esbuild src/mcp-server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/mcp-server.mjs && esbuild src/job-worker.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/job-worker.mjs",
     "verify": "npm run test && npm run typecheck:test && npm run build && npm run bundle"
   },
   "dependencies": {

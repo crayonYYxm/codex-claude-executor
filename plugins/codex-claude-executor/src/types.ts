@@ -7,10 +7,25 @@ export type ExecutionStatus =
 
 export type ExecutionMode = "standard" | "claude_write_only";
 
+export type ExecutionProgress = {
+  eventCount: number;
+  message: string;
+  updatedAt: string;
+};
+
 export type JobStatus =
   | "running"
+  | "restarting"
   | "cancelling"
   | ExecutionStatus;
+
+export type FailureKind =
+  | "claude_error"
+  | "invalid_result"
+  | "stalled"
+  | "worker_error"
+  | "workspace_error"
+  | null;
 
 export type GitWorkspaceSnapshot = {
   kind: "git";
@@ -48,6 +63,10 @@ export type ExecutePlanResult = ClaudeRunResult & {
   workspaceBefore: WorkspaceSnapshot;
   workspaceAfter: WorkspaceSnapshot;
 };
+
+export type ExecutePlanResponse =
+  | ExecutePlanResult
+  | ExecutionJobStatusResult;
 
 export type EnvironmentCheckResult = {
   ready: boolean;
@@ -93,6 +112,17 @@ export type ExecutionJobStatusResult = {
   workspaceAfter: WorkspaceSnapshot | null;
   result: ExecutePlanResult | null;
   currentPid: number | null;
+  workerPid: number | null;
+  progress: ExecutionProgress | null;
+  attempt: number;
+  maxAttempts: number;
+  lastActivityAt: string;
+  recoveryCount: number;
+  failureKind: FailureKind;
+  logsTruncated: {
+    stdout: boolean;
+    stderr: boolean;
+  };
 };
 
 export type ExecutionLogStream = "stdout" | "stderr";

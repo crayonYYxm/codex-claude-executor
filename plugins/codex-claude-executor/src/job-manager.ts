@@ -1,273 +1,485 @@
 import * as fs from "node:fs/promises";
-import { createWriteStream, type WriteStream } from "node:fs";
-import * as os from "node:os";
+import type { FileHandle } from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
-import { startClaude, type RunClaudeOptions } from "./claude-runner.js";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import type { RunClaudeOptions } from "./claude-runner.js";
+import {
+  DEFAULT_JOB_ROOT,
+  DEFAULT_LOG_LIMIT_BYTES,
+  DEFAULT_MAX_ATTEMPTS,
+  DEFAULT_STALL_MS,
+  atomicWriteJson,
+  cleanupOldJobs,
+  ensureJobRoot,
+  isPidAlive,
+  isTerminalStatus,
+  jobDirectory,
+  jobPath,
+  readResult,
+  readStatus,
+  removeWorkspaceLock,
+  safeWorkspaceSnapshot,
+  workspaceLockPath,
+  writeResult,
+  writeStatus,
+  type PersistedJobRequest,
+} from "./job-store.js";
 import { captureWorkspaceSnapshot } from "./workspace.js";
 import type {
-  ExecutionMode,
-  ExecutePlanResult,
   ExecutionJobStatusResult,
   ExecutionLogResult,
   ExecutionLogStream,
-  JobStatus,
+  ExecutePlanResult,
   StartExecutionResult,
-  WorkspaceSnapshot,
 } from "./types.js";
 
 type StartExecutionOptions = RunClaudeOptions;
 
-type ExecutionJob = {
-  id: string;
-  status: JobStatus;
-  workingDirectory: string;
-  allowedTools: string[];
-  executionMode: ExecutionMode;
-  timeoutSeconds: number;
-  createdAt: string;
-  startedAt: string;
-  finishedAt: string | null;
-  workspaceBefore: WorkspaceSnapshot;
-  workspaceAfter: WorkspaceSnapshot | null;
-  result: ExecutePlanResult | null;
-  currentPid: number | null;
-  stdoutPath: string;
-  stderrPath: string;
-  statusPath: string;
-  resultPath: string;
-  stdoutStream: WriteStream;
-  stderrStream: WriteStream;
-  stdoutBytes: number;
-  stderrBytes: number;
-  stdoutText: string;
-  stderrText: string;
-  runner: ReturnType<typeof startClaude> | null;
-  completionPromise: Promise<void>;
-};
-
-async function ensureDirectory(directory: string): Promise<void> {
-  await fs.mkdir(directory, { recursive: true });
+export function resolveWorkerPath(): string {
+  return (
+    process.env.CLAUDE_EXECUTOR_WORKER_PATH ??
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../dist/job-worker.mjs"
+    )
+  );
 }
 
-function toStatusResult(job: ExecutionJob): ExecutionJobStatusResult {
-  return {
-    jobId: job.id,
-    status: job.status,
-    workingDirectory: job.workingDirectory,
-    allowedTools: [...job.allowedTools],
-    executionMode: job.executionMode,
-    timeoutSeconds: job.timeoutSeconds,
-    createdAt: job.createdAt,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    workspaceBefore: job.workspaceBefore,
-    workspaceAfter: job.workspaceAfter,
-    result: job.result,
-    currentPid: job.currentPid,
-  };
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    if (process.platform !== "win32") {
+      process.kill(-pid, signal);
+    } else {
+      process.kill(pid, signal);
+    }
+  } catch {
+    // The worker may have exited between status inspection and signalling.
+  }
+}
+
+async function terminateProcessGroup(pid: number): Promise<void> {
+  signalProcessGroup(pid, "SIGTERM");
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  if (isPidAlive(pid)) signalProcessGroup(pid, "SIGKILL");
 }
 
 export class ExecutionJobManager {
-  private readonly jobs = new Map<string, ExecutionJob>();
   private readonly rootDirectory: string;
+  private readonly initialization: Promise<void>;
 
   constructor(rootDirectory?: string) {
     this.rootDirectory =
-      rootDirectory ?? path.join(os.tmpdir(), "codex-claude-executor-jobs");
+      rootDirectory ?? process.env.CLAUDE_EXECUTOR_JOB_ROOT ?? DEFAULT_JOB_ROOT;
+    this.initialization = this.initializePersistentJobs();
   }
 
-  private async persistStatus(job: ExecutionJob): Promise<void> {
-    await fs.writeFile(
-      job.statusPath,
-      JSON.stringify(toStatusResult(job), null, 2),
-      "utf-8"
-    );
-  }
-
-  private getActiveJob(): ExecutionJob | undefined {
-    for (const job of this.jobs.values()) {
-      if (job.status === "running" || job.status === "cancelling") {
-        return job;
+  private async initializePersistentJobs(): Promise<void> {
+    await ensureJobRoot(this.rootDirectory);
+    await cleanupOldJobs(this.rootDirectory);
+    const entries = await fs.readdir(this.rootDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === ".locks") continue;
+      try {
+        await this.recoverIfNeeded(await readStatus(this.rootDirectory, entry.name));
+      } catch {
+        // A malformed job remains on disk for diagnosis and does not prevent
+        // the MCP server from recovering other jobs.
       }
     }
-    return undefined;
+  }
+
+  private async spawnWorker(jobId: string): Promise<number> {
+    const child = spawn(process.execPath, [resolveWorkerPath(), this.rootDirectory, jobId], {
+      detached: process.platform !== "win32",
+      stdio: "ignore",
+      env: process.env,
+    });
+    child.unref();
+    if (!child.pid) {
+      throw new Error(`Failed to start worker for job ${jobId}`);
+    }
+    return child.pid;
+  }
+
+  private async launchWorker(
+    status: ExecutionJobStatusResult
+  ): Promise<ExecutionJobStatusResult> {
+    const startPath = jobPath(this.rootDirectory, status.jobId, "start.flag");
+    await fs.rm(startPath, { force: true });
+    status.workerPid = await this.spawnWorker(status.jobId);
+    await writeStatus(this.rootDirectory, status.jobId, status);
+    await fs.writeFile(startPath, "");
+    return status;
+  }
+
+  private async recoverPersistedTerminalResult(
+    status: ExecutionJobStatusResult
+  ): Promise<ExecutionJobStatusResult | null> {
+    try {
+      const persistedResult = await readResult(this.rootDirectory, status.jobId);
+      if (!isTerminalStatus(persistedResult.status)) return null;
+      status.status = persistedResult.status;
+      status.finishedAt = new Date().toISOString();
+      status.currentPid = null;
+      status.workerPid = null;
+      status.workspaceAfter = persistedResult.workspaceAfter;
+      status.result = persistedResult;
+      await writeStatus(this.rootDirectory, status.jobId, status);
+      await removeWorkspaceLock(
+        this.rootDirectory,
+        status.workingDirectory,
+        status.jobId
+      );
+      return status;
+    } catch {
+      return null;
+    }
+  }
+
+  private async completeCancellation(
+    status: ExecutionJobStatusResult
+  ): Promise<ExecutionJobStatusResult> {
+    const workspaceAfter = await safeWorkspaceSnapshot(
+      status.workingDirectory,
+      captureWorkspaceSnapshot
+    );
+    status.status = "cancelled";
+    status.finishedAt = new Date().toISOString();
+    status.currentPid = null;
+    status.workerPid = null;
+    status.workspaceAfter = workspaceAfter;
+    status.result = {
+      jobId: status.jobId,
+      status: "cancelled",
+      exitCode: null,
+      signal: "SIGTERM",
+      durationMs: 0,
+      stdout: "",
+      stderr: "",
+      stdoutTruncated: status.logsTruncated.stdout,
+      stderrTruncated: status.logsTruncated.stderr,
+      parsedOutput: null,
+      error: "Execution was cancelled",
+      workingDirectory: status.workingDirectory,
+      allowedTools: status.allowedTools,
+      executionMode: status.executionMode,
+      workspaceBefore: status.workspaceBefore,
+      workspaceAfter,
+    };
+    await writeResult(this.rootDirectory, status.jobId, status.result);
+    await writeStatus(this.rootDirectory, status.jobId, status);
+    await removeWorkspaceLock(
+      this.rootDirectory,
+      status.workingDirectory,
+      status.jobId
+    );
+    return status;
+  }
+
+  private async acquireRecoveryLease(
+    jobId: string
+  ): Promise<{ handle: FileHandle; leasePath: string } | null> {
+    const leasePath = jobPath(this.rootDirectory, jobId, "recovery.lock");
+    try {
+      const handle = await fs.open(leasePath, "wx");
+      await handle.writeFile(`${process.pid}\n${Date.now()}`, "utf-8");
+      return { handle, leasePath };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      try {
+        const stat = await fs.stat(leasePath);
+        if (Date.now() - stat.mtimeMs > 5000) {
+          await fs.rm(leasePath, { force: true });
+          return this.acquireRecoveryLease(jobId);
+        }
+      } catch {
+        return this.acquireRecoveryLease(jobId);
+      }
+      return null;
+    }
+  }
+
+  private async recoverIfNeeded(
+    status: ExecutionJobStatusResult
+  ): Promise<ExecutionJobStatusResult> {
+    if (isTerminalStatus(status.status) || isPidAlive(status.workerPid)) {
+      return status;
+    }
+    const persisted = await this.recoverPersistedTerminalResult(status);
+    if (persisted) return persisted;
+    if (status.status === "cancelling") {
+      return this.completeCancellation(status);
+    }
+
+    const lease = await this.acquireRecoveryLease(status.jobId);
+    if (!lease) {
+      const leasePath = jobPath(this.rootDirectory, status.jobId, "recovery.lock");
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        try {
+          await fs.access(leasePath);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        } catch {
+          break;
+        }
+      }
+      return readStatus(this.rootDirectory, status.jobId);
+    }
+
+    try {
+      status = await readStatus(this.rootDirectory, status.jobId);
+      if (isTerminalStatus(status.status) || isPidAlive(status.workerPid)) {
+        return status;
+      }
+      const latestPersisted = await this.recoverPersistedTerminalResult(status);
+      if (latestPersisted) return latestPersisted;
+      if (status.status === "cancelling") {
+        return this.completeCancellation(status);
+      }
+      if (
+        status.recoveryCount >= 2 ||
+        status.attempt >= status.maxAttempts
+      ) {
+        return this.markEnvironmentError(
+          status,
+          "Persistent worker exited repeatedly and could not be recovered"
+        );
+      }
+
+      if (status.currentPid) {
+        await terminateProcessGroup(status.currentPid);
+      }
+      status.recoveryCount += 1;
+      status.status = "restarting";
+      status.progress = {
+        eventCount: (status.progress?.eventCount ?? 0) + 1,
+        message: `Recovering persistent worker (${status.recoveryCount}/2)`,
+        updatedAt: new Date().toISOString(),
+      };
+      return this.launchWorker(status);
+    } finally {
+      await lease.handle.close();
+      await fs.rm(lease.leasePath, { force: true });
+    }
+  }
+
+  private async markEnvironmentError(
+    status: ExecutionJobStatusResult,
+    message: string
+  ): Promise<ExecutionJobStatusResult> {
+    const workspaceAfter = await safeWorkspaceSnapshot(
+      status.workingDirectory,
+      captureWorkspaceSnapshot
+    );
+    status.status = "environment_error";
+    status.finishedAt = new Date().toISOString();
+    status.failureKind = "worker_error";
+    status.currentPid = null;
+    status.workerPid = null;
+    status.workspaceAfter = workspaceAfter;
+    status.progress = {
+      eventCount: (status.progress?.eventCount ?? 0) + 1,
+      message,
+      updatedAt: new Date().toISOString(),
+    };
+    status.result = {
+      jobId: status.jobId,
+      status: "environment_error",
+      exitCode: null,
+      signal: null,
+      durationMs: 0,
+      stdout: "",
+      stderr: "",
+      stdoutTruncated: status.logsTruncated.stdout,
+      stderrTruncated: status.logsTruncated.stderr,
+      parsedOutput: null,
+      error: message,
+      workingDirectory: status.workingDirectory,
+      allowedTools: status.allowedTools,
+      executionMode: status.executionMode,
+      workspaceBefore: status.workspaceBefore,
+      workspaceAfter,
+    };
+    await writeResult(this.rootDirectory, status.jobId, status.result);
+    await writeStatus(this.rootDirectory, status.jobId, status);
+    await removeWorkspaceLock(
+      this.rootDirectory,
+      status.workingDirectory,
+      status.jobId
+    );
+    return status;
+  }
+
+  private async acquireWorkspaceLock(
+    workingDirectory: string,
+    jobId: string
+  ): Promise<void> {
+    const lockPath = workspaceLockPath(this.rootDirectory, workingDirectory);
+    try {
+      const handle = await fs.open(lockPath, "wx");
+      await handle.writeFile(jobId, "utf-8");
+      await handle.close();
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+
+    const activeJobId = (await fs.readFile(lockPath, "utf-8")).trim();
+    try {
+      const status = await this.recoverIfNeeded(
+        await readStatus(this.rootDirectory, activeJobId)
+      );
+      if (!isTerminalStatus(status.status)) {
+        throw new Error(
+          `Another execution is already active for this workspace (${activeJobId}).`
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("already active for this workspace")
+      ) {
+        throw error;
+      }
+    }
+
+    await fs.rm(lockPath, { force: true });
+    const handle = await fs.open(lockPath, "wx");
+    await handle.writeFile(jobId, "utf-8");
+    await handle.close();
   }
 
   async startExecution(
     options: StartExecutionOptions
   ): Promise<StartExecutionResult> {
-    const activeJob = this.getActiveJob();
-    if (activeJob) {
-      throw new Error(
-        `Another execution is already active (${activeJob.id}). Wait for it to finish or cancel it first.`
-      );
-    }
+    await this.initialization;
 
     const jobId = randomUUID();
-    const createdAt = new Date().toISOString();
-    const startedAt = createdAt;
-    const jobDirectory = path.join(this.rootDirectory, jobId);
-    await ensureDirectory(jobDirectory);
+    await this.acquireWorkspaceLock(options.workingDirectory, jobId);
+    let status: ExecutionJobStatusResult | null = null;
+    try {
+      const directory = jobDirectory(this.rootDirectory, jobId);
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(jobPath(this.rootDirectory, jobId, "stdout.log"), "");
+      await fs.writeFile(jobPath(this.rootDirectory, jobId, "stderr.log"), "");
 
-    const stdoutPath = path.join(jobDirectory, "stdout.log");
-    const stderrPath = path.join(jobDirectory, "stderr.log");
-    const statusPath = path.join(jobDirectory, "status.json");
-    const resultPath = path.join(jobDirectory, "result.json");
-    await fs.writeFile(stdoutPath, "", "utf-8");
-    await fs.writeFile(stderrPath, "", "utf-8");
+      const request: PersistedJobRequest = {
+        workingDirectory: options.workingDirectory,
+        plan: options.plan,
+        acceptanceCriteria: options.acceptanceCriteria ?? [],
+        extraAllowedTools: [],
+        allowedTools: [...options.allowedTools],
+        executionMode: options.executionMode ?? "standard",
+        timeoutSeconds: 0,
+        workspaceBefore: options.workspaceBefore,
+        claudeBin: options.claudeBin,
+        env: options.env,
+        stallMs: Number(process.env.CLAUDE_EXECUTOR_STALL_MS) || DEFAULT_STALL_MS,
+        maxAttempts:
+          Number(process.env.CLAUDE_EXECUTOR_MAX_ATTEMPTS) || DEFAULT_MAX_ATTEMPTS,
+        logLimitBytes:
+          Number(process.env.CLAUDE_EXECUTOR_LOG_LIMIT_BYTES) ||
+          DEFAULT_LOG_LIMIT_BYTES,
+      };
+      await atomicWriteJson(
+        jobPath(this.rootDirectory, jobId, "request.json"),
+        request
+      );
 
-    const stdoutStream = createWriteStream(stdoutPath, { flags: "a" });
-    const stderrStream = createWriteStream(stderrPath, { flags: "a" });
+      const now = new Date().toISOString();
+      status = {
+        jobId,
+        status: "running",
+        workingDirectory: options.workingDirectory,
+        allowedTools: [...options.allowedTools],
+        executionMode: options.executionMode ?? "standard",
+        timeoutSeconds: 0,
+        createdAt: now,
+        startedAt: now,
+        finishedAt: null,
+        workspaceBefore: options.workspaceBefore,
+        workspaceAfter: null,
+        result: null,
+        currentPid: null,
+        workerPid: null,
+        progress: null,
+        attempt: 0,
+        maxAttempts: request.maxAttempts,
+        lastActivityAt: now,
+        recoveryCount: 0,
+        failureKind: null,
+        logsTruncated: { stdout: false, stderr: false },
+      };
+      await writeStatus(this.rootDirectory, jobId, status);
+      await this.launchWorker(status);
 
-    const job: ExecutionJob = {
-      id: jobId,
-      status: "running",
-      workingDirectory: options.workingDirectory,
-      allowedTools: [...options.allowedTools],
-      executionMode: options.executionMode ?? "standard",
-      timeoutSeconds: options.timeoutSeconds,
-      createdAt,
-      startedAt,
-      finishedAt: null,
-      workspaceBefore: options.workspaceBefore,
-      workspaceAfter: null,
-      result: null,
-      currentPid: null,
-      stdoutPath,
-      stderrPath,
-      statusPath,
-      resultPath,
-      stdoutStream,
-      stderrStream,
-      stdoutBytes: 0,
-      stderrBytes: 0,
-      stdoutText: "",
-      stderrText: "",
-      runner: null,
-      completionPromise: Promise.resolve(),
-    };
-
-    const runner = startClaude(options, {
-      onStdout: (chunk) => {
-        job.stdoutBytes += Buffer.byteLength(chunk);
-        job.stdoutText += chunk;
-        job.stdoutStream.write(chunk);
-      },
-      onStderr: (chunk) => {
-        job.stderrBytes += Buffer.byteLength(chunk);
-        job.stderrText += chunk;
-        job.stderrStream.write(chunk);
-      },
-    });
-    job.runner = runner;
-    job.currentPid = runner.getPid();
-
-    this.jobs.set(jobId, job);
-    await this.persistStatus(job);
-
-    job.completionPromise = runner.completed
-      .then(async (runResult) => {
-        job.finishedAt = new Date().toISOString();
-        job.currentPid = null;
-        job.workspaceAfter = await captureWorkspaceSnapshot(job.workingDirectory);
-        job.status = runResult.status;
-        job.result = {
-          ...runResult,
-          jobId,
-          workingDirectory: job.workingDirectory,
-          allowedTools: [...job.allowedTools],
-          executionMode: job.executionMode,
-          workspaceBefore: job.workspaceBefore,
-          workspaceAfter: job.workspaceAfter,
-        };
-        await fs.writeFile(
-          job.resultPath,
-          JSON.stringify(job.result, null, 2),
-          "utf-8"
-        );
-        await new Promise<void>((resolve) => job.stdoutStream.end(resolve));
-        await new Promise<void>((resolve) => job.stderrStream.end(resolve));
-        await this.persistStatus(job);
-      })
-      .catch(async (error) => {
-        job.finishedAt = new Date().toISOString();
-        job.currentPid = null;
-        job.workspaceAfter = await captureWorkspaceSnapshot(job.workingDirectory);
-        job.status = "failed";
-        job.result = {
-          jobId,
-          status: "failed",
-          exitCode: null,
-          signal: null,
-          durationMs: 0,
-          stdout: "",
-          stderr: "",
-          stdoutTruncated: false,
-          stderrTruncated: false,
-          parsedOutput: null,
-          error: `Unexpected async execution failure: ${error instanceof Error ? error.message : String(error)}`,
-          workingDirectory: job.workingDirectory,
-          allowedTools: [...job.allowedTools],
-          executionMode: job.executionMode,
-          workspaceBefore: job.workspaceBefore,
-          workspaceAfter: job.workspaceAfter,
-        };
-        await new Promise<void>((resolve) => job.stdoutStream.end(resolve));
-        await new Promise<void>((resolve) => job.stderrStream.end(resolve));
-        await this.persistStatus(job);
+      return {
+        jobId,
+        status: status.status,
+        workingDirectory: status.workingDirectory,
+        allowedTools: status.allowedTools,
+        executionMode: status.executionMode,
+        timeoutSeconds: status.timeoutSeconds,
+        createdAt: status.createdAt,
+        startedAt: status.startedAt,
+      };
+    } catch (error) {
+      if (status?.workerPid) {
+        await terminateProcessGroup(status.workerPid);
+      }
+      await fs.rm(jobDirectory(this.rootDirectory, jobId), {
+        recursive: true,
+        force: true,
       });
-
-    return {
-      jobId,
-      status: job.status,
-      workingDirectory: job.workingDirectory,
-      allowedTools: [...job.allowedTools],
-      executionMode: job.executionMode,
-      timeoutSeconds: job.timeoutSeconds,
-      createdAt: job.createdAt,
-      startedAt: job.startedAt,
-    };
+      await removeWorkspaceLock(
+        this.rootDirectory,
+        options.workingDirectory,
+        jobId
+      );
+      throw error;
+    }
   }
 
   async waitForResult(jobId: string): Promise<ExecutePlanResult> {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
+    await this.initialization;
+    while (true) {
+      const status = await this.getExecutionStatus(jobId);
+      if (isTerminalStatus(status.status)) {
+        if (!status.result) {
+          throw new Error(`Job ${jobId} reached ${status.status} without a result`);
+        }
+        return status.result;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    if (job.result) {
-      return job.result;
-    }
-    if (!job.runner) {
-      throw new Error(`Job ${jobId} has no active runner`);
-    }
-    await job.completionPromise;
-    if (job.result) {
-      return job.result;
-    }
-    const runResult = await job.runner.completed;
-    return {
-      ...runResult,
-      jobId,
-      workingDirectory: job.workingDirectory,
-      allowedTools: [...job.allowedTools],
-      executionMode: job.executionMode,
-      workspaceBefore: job.workspaceBefore,
-      workspaceAfter:
-        job.workspaceAfter ??
-        ({
-          kind: "non_git",
-          note: "Workspace snapshot not available.",
-        } as WorkspaceSnapshot),
-    };
   }
 
-  getExecutionStatus(jobId: string): ExecutionJobStatusResult {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
+  async waitForResultOrStatus(
+    jobId: string,
+    maxWaitMs: number
+  ): Promise<ExecutePlanResult | ExecutionJobStatusResult> {
+    await this.initialization;
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      const status = await this.getExecutionStatus(jobId);
+      if (isTerminalStatus(status.status) && status.result) return status.result;
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    return toStatusResult(job);
+    return this.getExecutionStatus(jobId);
+  }
+
+  async getExecutionStatus(jobId: string): Promise<ExecutionJobStatusResult> {
+    await this.initialization;
+    try {
+      return await this.recoverIfNeeded(await readStatus(this.rootDirectory, jobId));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`Unknown job: ${jobId}`);
+      }
+      throw error;
+    }
   }
 
   async getExecutionLogs(
@@ -276,36 +488,39 @@ export class ExecutionJobManager {
     offset: number,
     limit: number
   ): Promise<ExecutionLogResult> {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
+    await this.initialization;
+    const status = await this.getExecutionStatus(jobId);
+    const filePath = jobPath(this.rootDirectory, jobId, `${stream}.log`);
+    const handle = await fs.open(filePath, "r");
+    try {
+      const stat = await handle.stat();
+      const safeOffset = Math.min(offset, stat.size);
+      const length = Math.min(limit, stat.size - safeOffset);
+      const buffer = Buffer.alloc(length);
+      await handle.read(buffer, 0, length, safeOffset);
+      return {
+        jobId,
+        status: status.status,
+        stream,
+        offset: safeOffset,
+        nextOffset: safeOffset + length,
+        eof: safeOffset + length >= stat.size,
+        text: buffer.toString("utf-8"),
+      };
+    } finally {
+      await handle.close();
     }
-
-    const fileContent = stream === "stdout" ? job.stdoutText : job.stderrText;
-    const nextOffset = Math.min(offset + limit, fileContent.length);
-    const text = fileContent.slice(offset, nextOffset);
-
-    return {
-      jobId,
-      status: job.status,
-      stream,
-      offset,
-      nextOffset,
-      eof: nextOffset >= fileContent.length,
-      text,
-    };
   }
 
   async cancelExecution(jobId: string): Promise<ExecutionJobStatusResult> {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
+    await this.initialization;
+    const status = await this.getExecutionStatus(jobId);
+    if (!isTerminalStatus(status.status)) {
+      status.status = "cancelling";
+      await fs.writeFile(jobPath(this.rootDirectory, jobId, "cancel.flag"), "");
+      await writeStatus(this.rootDirectory, jobId, status);
+      if (status.workerPid) signalProcessGroup(status.workerPid, "SIGTERM");
     }
-    if (job.status === "running") {
-      job.status = "cancelling";
-      await this.persistStatus(job);
-      job.runner?.cancel();
-    }
-    return toStatusResult(job);
+    return status;
   }
 }

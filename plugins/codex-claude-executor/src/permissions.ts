@@ -22,25 +22,57 @@ export const FIXED_ALLOWED_TOOLS: readonly string[] = [
   "Bash(git log *)",
   "Bash(git rev-parse *)",
 
-  // Common build and test commands - npm
+  // Common build, test, and lint commands - npm
   "Bash(npm test)",
   "Bash(npm test *)",
   "Bash(npm run test)",
   "Bash(npm run test *)",
   "Bash(npm run build)",
   "Bash(npm run build *)",
+  "Bash(npm run lint)",
+  "Bash(npm run lint *)",
+  "Bash(npm run typecheck)",
+  "Bash(npm run typecheck *)",
+  "Bash(npm run type-check)",
+  "Bash(npm run type-check *)",
+  "Bash(npm run verify)",
+  "Bash(npm run verify *)",
+  "Bash(npm run check)",
+  "Bash(npm run check *)",
 
-  // Common build and test commands - pnpm
+  // Common build, test, and lint commands - pnpm
   "Bash(pnpm test)",
   "Bash(pnpm test *)",
+  "Bash(pnpm run test)",
   "Bash(pnpm run test *)",
+  "Bash(pnpm run build)",
   "Bash(pnpm run build *)",
+  "Bash(pnpm run lint)",
+  "Bash(pnpm run lint *)",
+  "Bash(pnpm run typecheck)",
+  "Bash(pnpm run typecheck *)",
+  "Bash(pnpm run type-check)",
+  "Bash(pnpm run type-check *)",
+  "Bash(pnpm run verify)",
+  "Bash(pnpm run verify *)",
+  "Bash(pnpm run check)",
+  "Bash(pnpm run check *)",
 
-  // Common build and test commands - yarn
+  // Common build, test, and lint commands - yarn
   "Bash(yarn test)",
   "Bash(yarn test *)",
   "Bash(yarn build)",
   "Bash(yarn build *)",
+  "Bash(yarn lint)",
+  "Bash(yarn lint *)",
+  "Bash(yarn typecheck)",
+  "Bash(yarn typecheck *)",
+  "Bash(yarn type-check)",
+  "Bash(yarn type-check *)",
+  "Bash(yarn verify)",
+  "Bash(yarn verify *)",
+  "Bash(yarn check)",
+  "Bash(yarn check *)",
 
   // Python
   "Bash(pytest)",

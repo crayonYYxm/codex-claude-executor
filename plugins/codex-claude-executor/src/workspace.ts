@@ -97,6 +97,11 @@ async function execCommand(
 export async function captureWorkspaceSnapshot(
   directory: string
 ): Promise<WorkspaceSnapshot> {
+  const stat = await fs.stat(directory);
+  if (!stat.isDirectory()) {
+    throw new Error(`Workspace path is not a directory: ${directory}`);
+  }
+
   // Check if this is a Git repository
   const toplevel = await execCommand(
     "git",

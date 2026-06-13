@@ -2979,7 +2979,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve.call(this, root, ref);
+      let _sch = resolve2.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3006,7 +3006,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve(root, ref) {
+    function resolve2(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3224,8 +3224,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3477,8 +3477,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path3, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const [path4, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -3637,7 +3637,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve(baseURI, relativeURI, options) {
+    function resolve2(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse4(baseURI, schemelessOptions), parse4(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3895,7 +3895,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve,
+      resolve: resolve2,
       resolveComponent,
       equal,
       serialize,
@@ -6871,12 +6871,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs3, exportName) {
+    function addFormats(ajv, list, fs5, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs3[f]);
+        ajv.addFormat(f, fs5[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7083,10 +7083,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7406,11 +7406,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -12997,12 +12997,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve();
+        resolve2();
       } else {
-        this._stdout.once("drain", resolve);
+        this._stdout.once("drain", resolve2);
       }
     });
   }
@@ -13486,8 +13486,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -13603,11 +13603,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -19070,7 +19070,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -19087,7 +19087,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19165,7 +19165,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve(parseResult.data);
+            resolve2(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19426,12 +19426,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve, interval);
+      const timeoutId = setTimeout(resolve2, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20531,7 +20531,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21101,6 +21101,7 @@ var EMPTY_COMPLETION_RESULT = {
 
 // src/server.ts
 import { execFile as execFile2 } from "node:child_process";
+import * as fs4 from "node:fs/promises";
 
 // src/workspace.ts
 import * as fs from "node:fs/promises";
@@ -21124,29 +21125,33 @@ async function resolveWorkingDirectory(inputPath) {
   if (resolved === path.parse(resolved).root) {
     throw new Error("Working directory cannot be the filesystem root");
   }
-  const stat2 = await fs.stat(resolved);
-  if (!stat2.isDirectory()) {
+  const stat4 = await fs.stat(resolved);
+  if (!stat4.isDirectory()) {
     throw new Error("Working directory is not a directory");
   }
   return resolved;
 }
 async function execCommand(command, args, cwd) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     execFile(
       command,
       args,
       { cwd, timeout: 15e3 },
       (error2, stdout, stderr) => {
         if (error2) {
-          resolve(null);
+          resolve2(null);
           return;
         }
-        resolve(stdout.toString());
+        resolve2(stdout.toString());
       }
     );
   });
 }
 async function captureWorkspaceSnapshot(directory) {
+  const stat4 = await fs.stat(directory);
+  if (!stat4.isDirectory()) {
+    throw new Error(`Workspace path is not a directory: ${directory}`);
+  }
   const toplevel = await execCommand(
     "git",
     ["-C", directory, "rev-parse", "--show-toplevel"],
@@ -21199,23 +21204,55 @@ var FIXED_ALLOWED_TOOLS = [
   "Bash(git log)",
   "Bash(git log *)",
   "Bash(git rev-parse *)",
-  // Common build and test commands - npm
+  // Common build, test, and lint commands - npm
   "Bash(npm test)",
   "Bash(npm test *)",
   "Bash(npm run test)",
   "Bash(npm run test *)",
   "Bash(npm run build)",
   "Bash(npm run build *)",
-  // Common build and test commands - pnpm
+  "Bash(npm run lint)",
+  "Bash(npm run lint *)",
+  "Bash(npm run typecheck)",
+  "Bash(npm run typecheck *)",
+  "Bash(npm run type-check)",
+  "Bash(npm run type-check *)",
+  "Bash(npm run verify)",
+  "Bash(npm run verify *)",
+  "Bash(npm run check)",
+  "Bash(npm run check *)",
+  // Common build, test, and lint commands - pnpm
   "Bash(pnpm test)",
   "Bash(pnpm test *)",
+  "Bash(pnpm run test)",
   "Bash(pnpm run test *)",
+  "Bash(pnpm run build)",
   "Bash(pnpm run build *)",
-  // Common build and test commands - yarn
+  "Bash(pnpm run lint)",
+  "Bash(pnpm run lint *)",
+  "Bash(pnpm run typecheck)",
+  "Bash(pnpm run typecheck *)",
+  "Bash(pnpm run type-check)",
+  "Bash(pnpm run type-check *)",
+  "Bash(pnpm run verify)",
+  "Bash(pnpm run verify *)",
+  "Bash(pnpm run check)",
+  "Bash(pnpm run check *)",
+  // Common build, test, and lint commands - yarn
   "Bash(yarn test)",
   "Bash(yarn test *)",
   "Bash(yarn build)",
   "Bash(yarn build *)",
+  "Bash(yarn lint)",
+  "Bash(yarn lint *)",
+  "Bash(yarn typecheck)",
+  "Bash(yarn typecheck *)",
+  "Bash(yarn type-check)",
+  "Bash(yarn type-check *)",
+  "Bash(yarn verify)",
+  "Bash(yarn verify *)",
+  "Bash(yarn check)",
+  "Bash(yarn check *)",
   // Python
   "Bash(pytest)",
   "Bash(pytest *)",
@@ -21269,542 +21306,559 @@ function mergeAllowedTools(extraTools) {
 }
 
 // src/job-manager.ts
+import * as fs3 from "node:fs/promises";
+import * as path3 from "node:path";
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+// src/job-store.ts
 import * as fs2 from "node:fs/promises";
-import { createWriteStream } from "node:fs";
 import * as os from "node:os";
 import * as path2 from "node:path";
-import { randomUUID } from "node:crypto";
-
-// src/claude-runner.ts
-import { spawn } from "node:child_process";
-var MAX_OUTPUT_SIZE = 2 * 1024 * 1024;
-var SIGTERM_WAIT_MS = 5e3;
-function buildPrompt(options) {
-  const executionMode = options.executionMode ?? "standard";
-  const sections = [
-    "This is an already approved implementation plan.",
-    "",
-    `Working directory: ${options.workingDirectory}`,
-    "",
-    "## Plan",
-    options.plan,
-    "",
-    "## Workspace Before Execution",
-    JSON.stringify(options.workspaceBefore, null, 2)
-  ];
-  if (options.acceptanceCriteria && options.acceptanceCriteria.length > 0) {
-    sections.push("", "## Acceptance Criteria");
-    for (const criteria of options.acceptanceCriteria) {
-      sections.push(`- ${criteria}`);
-    }
-  }
-  sections.push(
-    "",
-    "## Instructions",
-    "- Preserve all pre-existing user changes.",
-    "- Do not revert, reset, clean, checkout, commit, push, or deploy.",
-    "- Do not modify unrelated files.",
-    "- Do not access files outside the working directory.",
-    "- Run relevant tests only when allowed by the tool permissions.",
-    "",
-    "## Reporting",
-    "At the end, report:",
-    "- Changed files",
-    "- Commands executed",
-    "- Test results",
-    "- Unresolved issues"
-  );
-  if (executionMode === "claude_write_only") {
-    sections.push(
-      "",
-      "## Collaboration Mode",
-      "- Codex is acting as planner and reviewer only.",
-      "- Claude must perform every code change inside this execution.",
-      "- Do not assume Codex will manually patch your output after this run.",
-      "- If the review later finds issues, expect a follow-up plan instead of a manual Codex fix."
-    );
-  }
-  return sections.join("\n");
+import { createHash, randomUUID } from "node:crypto";
+var DEFAULT_JOB_ROOT = path2.join(
+  os.homedir(),
+  ".codex",
+  "claude-executor",
+  "jobs"
+);
+var DEFAULT_MAX_ATTEMPTS = 3;
+var DEFAULT_STALL_MS = 15 * 60 * 1e3;
+var DEFAULT_LOG_LIMIT_BYTES = 20 * 1024 * 1024;
+var TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1e3;
+function jobDirectory(root, jobId) {
+  return path2.join(root, jobId);
 }
-function startClaude(options, hooks = {}) {
-  const claudeBin = options.claudeBin ?? process.env.CLAUDE_BIN ?? "claude";
-  const startTime = Date.now();
-  const args = [
-    "-p",
-    "--output-format",
-    "json",
-    "--permission-mode",
-    "dontAsk",
-    "--no-session-persistence",
-    "--no-chrome",
-    "--allowedTools",
-    options.allowedTools.join(",")
-  ];
-  const env = { ...process.env, ...options.env };
-  const prompt = buildPrompt(options);
-  let process_ref = null;
-  let processClosed = false;
-  let stopReason = null;
-  const completed = new Promise((resolve) => {
-    let timeoutId = null;
-    let sigtermTimeoutId = null;
-    let stdout = "";
-    let stderr = "";
-    let stdoutTruncated = false;
-    let stderrTruncated = false;
-    let resolved = false;
-    const cleanup = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (sigtermTimeoutId) {
-        clearTimeout(sigtermTimeoutId);
-        sigtermTimeoutId = null;
-      }
-    };
-    const resolveOnce = (result) => {
-      if (!resolved) {
-        resolved = true;
-        cleanup();
-        resolve(result);
-      }
-    };
-    const signalProcess = (signal) => {
-      if (!process_ref?.pid || processClosed) return;
-      if (process.platform !== "win32") {
-        try {
-          process.kill(-process_ref.pid, signal);
-          return;
-        } catch {
-        }
-      }
-      process_ref.kill(signal);
-    };
+function jobPath(root, jobId, name) {
+  return path2.join(jobDirectory(root, jobId), name);
+}
+async function ensureJobRoot(root) {
+  await fs2.mkdir(root, { recursive: true });
+  await fs2.mkdir(path2.join(root, ".locks"), { recursive: true });
+}
+async function atomicWriteJson(filePath, value) {
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  await fs2.writeFile(temporaryPath, JSON.stringify(value, null, 2), "utf-8");
+  await fs2.rename(temporaryPath, filePath);
+}
+async function readJson(filePath) {
+  return JSON.parse(await fs2.readFile(filePath, "utf-8"));
+}
+async function readStatus(root, jobId) {
+  return readJson(jobPath(root, jobId, "status.json"));
+}
+async function writeStatus(root, jobId, status) {
+  await atomicWriteJson(jobPath(root, jobId, "status.json"), status);
+}
+async function writeResult(root, jobId, result) {
+  await atomicWriteJson(jobPath(root, jobId, "result.json"), result);
+}
+async function readResult(root, jobId) {
+  return readJson(jobPath(root, jobId, "result.json"));
+}
+function isTerminalStatus(status) {
+  return [
+    "completed",
+    "failed",
+    "timed_out",
+    "cancelled",
+    "environment_error"
+  ].includes(status);
+}
+function isPidAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function workspaceLockPath(root, workingDirectory) {
+  const hash = createHash("sha256").update(workingDirectory).digest("hex");
+  return path2.join(root, ".locks", `${hash}.lock`);
+}
+async function removeWorkspaceLock(root, workingDirectory, expectedJobId) {
+  const lockPath = workspaceLockPath(root, workingDirectory);
+  if (expectedJobId) {
     try {
-      process_ref = spawn(claudeBin, args, {
-        cwd: options.workingDirectory,
-        stdio: ["pipe", "pipe", "pipe"],
-        shell: false,
-        env,
-        detached: process.platform !== "win32"
-      });
-    } catch (error2) {
-      resolveOnce({
-        status: "environment_error",
-        exitCode: null,
-        signal: null,
-        durationMs: Date.now() - startTime,
-        stdout: "",
-        stderr: "",
-        stdoutTruncated: false,
-        stderrTruncated: false,
-        parsedOutput: null,
-        error: `Failed to spawn Claude process: ${error2 instanceof Error ? error2.message : String(error2)}`
-      });
+      const currentJobId = (await fs2.readFile(lockPath, "utf-8")).trim();
+      if (currentJobId !== expectedJobId) return;
+    } catch {
       return;
     }
-    process_ref.stdin?.write(prompt);
-    process_ref.stdin?.end();
-    process_ref.stdout?.on("data", (data) => {
-      const chunk = data.toString();
-      hooks.onStdout?.(chunk);
-      if (stdout.length < MAX_OUTPUT_SIZE) {
-        stdout += chunk;
-        if (stdout.length > MAX_OUTPUT_SIZE) {
-          stdout = stdout.slice(0, MAX_OUTPUT_SIZE);
-          stdoutTruncated = true;
-        }
-      } else {
-        stdoutTruncated = true;
+  }
+  await fs2.rm(lockPath, { force: true });
+}
+async function safeWorkspaceSnapshot(workingDirectory, capture) {
+  try {
+    return await capture(workingDirectory);
+  } catch (error2) {
+    return {
+      kind: "non_git",
+      note: `Workspace snapshot unavailable: ${error2 instanceof Error ? error2.message : String(error2)}`
+    };
+  }
+}
+async function cleanupOldJobs(root, now = Date.now()) {
+  await ensureJobRoot(root);
+  const entries = await fs2.readdir(root, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === ".locks") continue;
+    try {
+      const status = await readStatus(root, entry.name);
+      if (isTerminalStatus(status.status) && status.finishedAt && now - Date.parse(status.finishedAt) > TERMINAL_RETENTION_MS) {
+        await removeWorkspaceLock(root, status.workingDirectory, entry.name);
+        await fs2.rm(jobDirectory(root, entry.name), { recursive: true, force: true });
       }
-    });
-    process_ref.stderr?.on("data", (data) => {
-      const chunk = data.toString();
-      hooks.onStderr?.(chunk);
-      if (stderr.length < MAX_OUTPUT_SIZE) {
-        stderr += chunk;
-        if (stderr.length > MAX_OUTPUT_SIZE) {
-          stderr = stderr.slice(0, MAX_OUTPUT_SIZE);
-          stderrTruncated = true;
-        }
-      } else {
-        stderrTruncated = true;
-      }
-    });
-    timeoutId = setTimeout(() => {
-      stopReason = "timeout";
-      signalProcess("SIGTERM");
-      sigtermTimeoutId = setTimeout(() => {
-        signalProcess("SIGKILL");
-      }, SIGTERM_WAIT_MS);
-    }, options.timeoutSeconds * 1e3);
-    process_ref.on("close", (code, signal) => {
-      processClosed = true;
-      if (resolved) return;
-      cleanup();
-      const durationMs = Date.now() - startTime;
-      if (stopReason === "timeout") {
-        resolveOnce({
-          status: "timed_out",
-          exitCode: code,
-          signal,
-          durationMs,
-          stdout,
-          stderr,
-          stdoutTruncated,
-          stderrTruncated,
-          parsedOutput: null,
-          error: `Execution timed out after ${options.timeoutSeconds} seconds`
-        });
-        return;
-      }
-      if (stopReason === "cancelled") {
-        resolveOnce({
-          status: "cancelled",
-          exitCode: code,
-          signal,
-          durationMs,
-          stdout,
-          stderr,
-          stdoutTruncated,
-          stderrTruncated,
-          parsedOutput: null,
-          error: "Execution was cancelled"
-        });
-        return;
-      }
-      let parsedOutput = null;
-      let parseError = null;
-      try {
-        parsedOutput = JSON.parse(stdout);
-      } catch {
-        if (code === 0) {
-          parseError = "Invalid JSON output from Claude despite zero exit code";
-        }
-      }
-      let status;
-      let error2 = parseError;
-      if (code === 0 && parsedOutput !== null) {
-        status = "completed";
-      } else if (code === 0 && parseError) {
-        status = "failed";
-      } else {
-        status = "failed";
-        if (!error2) {
-          error2 = `Claude process exited with code ${code}`;
-        }
-      }
-      resolveOnce({
-        status,
-        exitCode: code,
-        signal,
-        durationMs,
-        stdout,
-        stderr,
-        stdoutTruncated,
-        stderrTruncated,
-        parsedOutput,
-        error: error2
-      });
-    });
-    process_ref.on("error", (error2) => {
-      if (resolved) return;
-      cleanup();
-      resolveOnce({
-        status: "environment_error",
-        exitCode: null,
-        signal: null,
-        durationMs: Date.now() - startTime,
-        stdout,
-        stderr,
-        stdoutTruncated,
-        stderrTruncated,
-        parsedOutput: null,
-        error: `Failed to spawn Claude process: ${error2.message}`
-      });
-    });
-  });
-  return {
-    cancel: () => {
-      if (processClosed || stopReason === "timeout" || stopReason === "cancelled") {
-        return;
-      }
-      stopReason = "cancelled";
-      if (!process_ref?.pid) {
-        return;
-      }
-      if (process.platform !== "win32") {
-        try {
-          process.kill(-process_ref.pid, "SIGTERM");
-        } catch {
-          process_ref.kill("SIGTERM");
-        }
-      } else {
-        process_ref.kill("SIGTERM");
-      }
-      setTimeout(() => {
-        if (!processClosed) {
-          if (process.platform !== "win32") {
-            try {
-              process.kill(-process_ref.pid, "SIGKILL");
-            } catch {
-              process_ref?.kill("SIGKILL");
-            }
-          } else {
-            process_ref?.kill("SIGKILL");
-          }
-        }
-      }, SIGTERM_WAIT_MS);
-    },
-    completed,
-    getPid: () => process_ref?.pid ?? null
-  };
+    } catch {
+    }
+  }
 }
 
 // src/job-manager.ts
-async function ensureDirectory(directory) {
-  await fs2.mkdir(directory, { recursive: true });
+function resolveWorkerPath() {
+  return process.env.CLAUDE_EXECUTOR_WORKER_PATH ?? path3.resolve(
+    path3.dirname(fileURLToPath(import.meta.url)),
+    "../dist/job-worker.mjs"
+  );
 }
-function toStatusResult(job) {
-  return {
-    jobId: job.id,
-    status: job.status,
-    workingDirectory: job.workingDirectory,
-    allowedTools: [...job.allowedTools],
-    executionMode: job.executionMode,
-    timeoutSeconds: job.timeoutSeconds,
-    createdAt: job.createdAt,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    workspaceBefore: job.workspaceBefore,
-    workspaceAfter: job.workspaceAfter,
-    result: job.result,
-    currentPid: job.currentPid
-  };
+function signalProcessGroup(pid, signal) {
+  try {
+    if (process.platform !== "win32") {
+      process.kill(-pid, signal);
+    } else {
+      process.kill(pid, signal);
+    }
+  } catch {
+  }
+}
+async function terminateProcessGroup(pid) {
+  signalProcessGroup(pid, "SIGTERM");
+  await new Promise((resolve2) => setTimeout(resolve2, 250));
+  if (isPidAlive(pid)) signalProcessGroup(pid, "SIGKILL");
 }
 var ExecutionJobManager = class {
-  jobs = /* @__PURE__ */ new Map();
   rootDirectory;
+  initialization;
   constructor(rootDirectory) {
-    this.rootDirectory = rootDirectory ?? path2.join(os.tmpdir(), "codex-claude-executor-jobs");
+    this.rootDirectory = rootDirectory ?? process.env.CLAUDE_EXECUTOR_JOB_ROOT ?? DEFAULT_JOB_ROOT;
+    this.initialization = this.initializePersistentJobs();
   }
-  async persistStatus(job) {
-    await fs2.writeFile(
-      job.statusPath,
-      JSON.stringify(toStatusResult(job), null, 2),
-      "utf-8"
-    );
-  }
-  getActiveJob() {
-    for (const job of this.jobs.values()) {
-      if (job.status === "running" || job.status === "cancelling") {
-        return job;
+  async initializePersistentJobs() {
+    await ensureJobRoot(this.rootDirectory);
+    await cleanupOldJobs(this.rootDirectory);
+    const entries = await fs3.readdir(this.rootDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === ".locks") continue;
+      try {
+        await this.recoverIfNeeded(await readStatus(this.rootDirectory, entry.name));
+      } catch {
       }
     }
-    return void 0;
+  }
+  async spawnWorker(jobId) {
+    const child = spawn(process.execPath, [resolveWorkerPath(), this.rootDirectory, jobId], {
+      detached: process.platform !== "win32",
+      stdio: "ignore",
+      env: process.env
+    });
+    child.unref();
+    if (!child.pid) {
+      throw new Error(`Failed to start worker for job ${jobId}`);
+    }
+    return child.pid;
+  }
+  async launchWorker(status) {
+    const startPath = jobPath(this.rootDirectory, status.jobId, "start.flag");
+    await fs3.rm(startPath, { force: true });
+    status.workerPid = await this.spawnWorker(status.jobId);
+    await writeStatus(this.rootDirectory, status.jobId, status);
+    await fs3.writeFile(startPath, "");
+    return status;
+  }
+  async recoverPersistedTerminalResult(status) {
+    try {
+      const persistedResult = await readResult(this.rootDirectory, status.jobId);
+      if (!isTerminalStatus(persistedResult.status)) return null;
+      status.status = persistedResult.status;
+      status.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+      status.currentPid = null;
+      status.workerPid = null;
+      status.workspaceAfter = persistedResult.workspaceAfter;
+      status.result = persistedResult;
+      await writeStatus(this.rootDirectory, status.jobId, status);
+      await removeWorkspaceLock(
+        this.rootDirectory,
+        status.workingDirectory,
+        status.jobId
+      );
+      return status;
+    } catch {
+      return null;
+    }
+  }
+  async completeCancellation(status) {
+    const workspaceAfter = await safeWorkspaceSnapshot(
+      status.workingDirectory,
+      captureWorkspaceSnapshot
+    );
+    status.status = "cancelled";
+    status.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+    status.currentPid = null;
+    status.workerPid = null;
+    status.workspaceAfter = workspaceAfter;
+    status.result = {
+      jobId: status.jobId,
+      status: "cancelled",
+      exitCode: null,
+      signal: "SIGTERM",
+      durationMs: 0,
+      stdout: "",
+      stderr: "",
+      stdoutTruncated: status.logsTruncated.stdout,
+      stderrTruncated: status.logsTruncated.stderr,
+      parsedOutput: null,
+      error: "Execution was cancelled",
+      workingDirectory: status.workingDirectory,
+      allowedTools: status.allowedTools,
+      executionMode: status.executionMode,
+      workspaceBefore: status.workspaceBefore,
+      workspaceAfter
+    };
+    await writeResult(this.rootDirectory, status.jobId, status.result);
+    await writeStatus(this.rootDirectory, status.jobId, status);
+    await removeWorkspaceLock(
+      this.rootDirectory,
+      status.workingDirectory,
+      status.jobId
+    );
+    return status;
+  }
+  async acquireRecoveryLease(jobId) {
+    const leasePath = jobPath(this.rootDirectory, jobId, "recovery.lock");
+    try {
+      const handle = await fs3.open(leasePath, "wx");
+      await handle.writeFile(`${process.pid}
+${Date.now()}`, "utf-8");
+      return { handle, leasePath };
+    } catch (error2) {
+      if (error2.code !== "EEXIST") throw error2;
+      try {
+        const stat4 = await fs3.stat(leasePath);
+        if (Date.now() - stat4.mtimeMs > 5e3) {
+          await fs3.rm(leasePath, { force: true });
+          return this.acquireRecoveryLease(jobId);
+        }
+      } catch {
+        return this.acquireRecoveryLease(jobId);
+      }
+      return null;
+    }
+  }
+  async recoverIfNeeded(status) {
+    if (isTerminalStatus(status.status) || isPidAlive(status.workerPid)) {
+      return status;
+    }
+    const persisted = await this.recoverPersistedTerminalResult(status);
+    if (persisted) return persisted;
+    if (status.status === "cancelling") {
+      return this.completeCancellation(status);
+    }
+    const lease = await this.acquireRecoveryLease(status.jobId);
+    if (!lease) {
+      const leasePath = jobPath(this.rootDirectory, status.jobId, "recovery.lock");
+      const deadline = Date.now() + 5e3;
+      while (Date.now() < deadline) {
+        try {
+          await fs3.access(leasePath);
+          await new Promise((resolve2) => setTimeout(resolve2, 50));
+        } catch {
+          break;
+        }
+      }
+      return readStatus(this.rootDirectory, status.jobId);
+    }
+    try {
+      status = await readStatus(this.rootDirectory, status.jobId);
+      if (isTerminalStatus(status.status) || isPidAlive(status.workerPid)) {
+        return status;
+      }
+      const latestPersisted = await this.recoverPersistedTerminalResult(status);
+      if (latestPersisted) return latestPersisted;
+      if (status.status === "cancelling") {
+        return this.completeCancellation(status);
+      }
+      if (status.recoveryCount >= 2 || status.attempt >= status.maxAttempts) {
+        return this.markEnvironmentError(
+          status,
+          "Persistent worker exited repeatedly and could not be recovered"
+        );
+      }
+      if (status.currentPid) {
+        await terminateProcessGroup(status.currentPid);
+      }
+      status.recoveryCount += 1;
+      status.status = "restarting";
+      status.progress = {
+        eventCount: (status.progress?.eventCount ?? 0) + 1,
+        message: `Recovering persistent worker (${status.recoveryCount}/2)`,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      return this.launchWorker(status);
+    } finally {
+      await lease.handle.close();
+      await fs3.rm(lease.leasePath, { force: true });
+    }
+  }
+  async markEnvironmentError(status, message) {
+    const workspaceAfter = await safeWorkspaceSnapshot(
+      status.workingDirectory,
+      captureWorkspaceSnapshot
+    );
+    status.status = "environment_error";
+    status.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+    status.failureKind = "worker_error";
+    status.currentPid = null;
+    status.workerPid = null;
+    status.workspaceAfter = workspaceAfter;
+    status.progress = {
+      eventCount: (status.progress?.eventCount ?? 0) + 1,
+      message,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    status.result = {
+      jobId: status.jobId,
+      status: "environment_error",
+      exitCode: null,
+      signal: null,
+      durationMs: 0,
+      stdout: "",
+      stderr: "",
+      stdoutTruncated: status.logsTruncated.stdout,
+      stderrTruncated: status.logsTruncated.stderr,
+      parsedOutput: null,
+      error: message,
+      workingDirectory: status.workingDirectory,
+      allowedTools: status.allowedTools,
+      executionMode: status.executionMode,
+      workspaceBefore: status.workspaceBefore,
+      workspaceAfter
+    };
+    await writeResult(this.rootDirectory, status.jobId, status.result);
+    await writeStatus(this.rootDirectory, status.jobId, status);
+    await removeWorkspaceLock(
+      this.rootDirectory,
+      status.workingDirectory,
+      status.jobId
+    );
+    return status;
+  }
+  async acquireWorkspaceLock(workingDirectory, jobId) {
+    const lockPath = workspaceLockPath(this.rootDirectory, workingDirectory);
+    try {
+      const handle2 = await fs3.open(lockPath, "wx");
+      await handle2.writeFile(jobId, "utf-8");
+      await handle2.close();
+      return;
+    } catch (error2) {
+      if (error2.code !== "EEXIST") throw error2;
+    }
+    const activeJobId = (await fs3.readFile(lockPath, "utf-8")).trim();
+    try {
+      const status = await this.recoverIfNeeded(
+        await readStatus(this.rootDirectory, activeJobId)
+      );
+      if (!isTerminalStatus(status.status)) {
+        throw new Error(
+          `Another execution is already active for this workspace (${activeJobId}).`
+        );
+      }
+    } catch (error2) {
+      if (error2 instanceof Error && error2.message.includes("already active for this workspace")) {
+        throw error2;
+      }
+    }
+    await fs3.rm(lockPath, { force: true });
+    const handle = await fs3.open(lockPath, "wx");
+    await handle.writeFile(jobId, "utf-8");
+    await handle.close();
   }
   async startExecution(options) {
-    const activeJob = this.getActiveJob();
-    if (activeJob) {
-      throw new Error(
-        `Another execution is already active (${activeJob.id}). Wait for it to finish or cancel it first.`
+    await this.initialization;
+    const jobId = randomUUID2();
+    await this.acquireWorkspaceLock(options.workingDirectory, jobId);
+    let status = null;
+    try {
+      const directory = jobDirectory(this.rootDirectory, jobId);
+      await fs3.mkdir(directory, { recursive: true });
+      await fs3.writeFile(jobPath(this.rootDirectory, jobId, "stdout.log"), "");
+      await fs3.writeFile(jobPath(this.rootDirectory, jobId, "stderr.log"), "");
+      const request = {
+        workingDirectory: options.workingDirectory,
+        plan: options.plan,
+        acceptanceCriteria: options.acceptanceCriteria ?? [],
+        extraAllowedTools: [],
+        allowedTools: [...options.allowedTools],
+        executionMode: options.executionMode ?? "standard",
+        timeoutSeconds: 0,
+        workspaceBefore: options.workspaceBefore,
+        claudeBin: options.claudeBin,
+        env: options.env,
+        stallMs: Number(process.env.CLAUDE_EXECUTOR_STALL_MS) || DEFAULT_STALL_MS,
+        maxAttempts: Number(process.env.CLAUDE_EXECUTOR_MAX_ATTEMPTS) || DEFAULT_MAX_ATTEMPTS,
+        logLimitBytes: Number(process.env.CLAUDE_EXECUTOR_LOG_LIMIT_BYTES) || DEFAULT_LOG_LIMIT_BYTES
+      };
+      await atomicWriteJson(
+        jobPath(this.rootDirectory, jobId, "request.json"),
+        request
       );
-    }
-    const jobId = randomUUID();
-    const createdAt = (/* @__PURE__ */ new Date()).toISOString();
-    const startedAt = createdAt;
-    const jobDirectory = path2.join(this.rootDirectory, jobId);
-    await ensureDirectory(jobDirectory);
-    const stdoutPath = path2.join(jobDirectory, "stdout.log");
-    const stderrPath = path2.join(jobDirectory, "stderr.log");
-    const statusPath = path2.join(jobDirectory, "status.json");
-    const resultPath = path2.join(jobDirectory, "result.json");
-    await fs2.writeFile(stdoutPath, "", "utf-8");
-    await fs2.writeFile(stderrPath, "", "utf-8");
-    const stdoutStream = createWriteStream(stdoutPath, { flags: "a" });
-    const stderrStream = createWriteStream(stderrPath, { flags: "a" });
-    const job = {
-      id: jobId,
-      status: "running",
-      workingDirectory: options.workingDirectory,
-      allowedTools: [...options.allowedTools],
-      executionMode: options.executionMode ?? "standard",
-      timeoutSeconds: options.timeoutSeconds,
-      createdAt,
-      startedAt,
-      finishedAt: null,
-      workspaceBefore: options.workspaceBefore,
-      workspaceAfter: null,
-      result: null,
-      currentPid: null,
-      stdoutPath,
-      stderrPath,
-      statusPath,
-      resultPath,
-      stdoutStream,
-      stderrStream,
-      stdoutBytes: 0,
-      stderrBytes: 0,
-      stdoutText: "",
-      stderrText: "",
-      runner: null,
-      completionPromise: Promise.resolve()
-    };
-    const runner = startClaude(options, {
-      onStdout: (chunk) => {
-        job.stdoutBytes += Buffer.byteLength(chunk);
-        job.stdoutText += chunk;
-        job.stdoutStream.write(chunk);
-      },
-      onStderr: (chunk) => {
-        job.stderrBytes += Buffer.byteLength(chunk);
-        job.stderrText += chunk;
-        job.stderrStream.write(chunk);
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      status = {
+        jobId,
+        status: "running",
+        workingDirectory: options.workingDirectory,
+        allowedTools: [...options.allowedTools],
+        executionMode: options.executionMode ?? "standard",
+        timeoutSeconds: 0,
+        createdAt: now,
+        startedAt: now,
+        finishedAt: null,
+        workspaceBefore: options.workspaceBefore,
+        workspaceAfter: null,
+        result: null,
+        currentPid: null,
+        workerPid: null,
+        progress: null,
+        attempt: 0,
+        maxAttempts: request.maxAttempts,
+        lastActivityAt: now,
+        recoveryCount: 0,
+        failureKind: null,
+        logsTruncated: { stdout: false, stderr: false }
+      };
+      await writeStatus(this.rootDirectory, jobId, status);
+      await this.launchWorker(status);
+      return {
+        jobId,
+        status: status.status,
+        workingDirectory: status.workingDirectory,
+        allowedTools: status.allowedTools,
+        executionMode: status.executionMode,
+        timeoutSeconds: status.timeoutSeconds,
+        createdAt: status.createdAt,
+        startedAt: status.startedAt
+      };
+    } catch (error2) {
+      if (status?.workerPid) {
+        await terminateProcessGroup(status.workerPid);
       }
-    });
-    job.runner = runner;
-    job.currentPid = runner.getPid();
-    this.jobs.set(jobId, job);
-    await this.persistStatus(job);
-    job.completionPromise = runner.completed.then(async (runResult) => {
-      job.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
-      job.currentPid = null;
-      job.workspaceAfter = await captureWorkspaceSnapshot(job.workingDirectory);
-      job.status = runResult.status;
-      job.result = {
-        ...runResult,
-        jobId,
-        workingDirectory: job.workingDirectory,
-        allowedTools: [...job.allowedTools],
-        executionMode: job.executionMode,
-        workspaceBefore: job.workspaceBefore,
-        workspaceAfter: job.workspaceAfter
-      };
-      await fs2.writeFile(
-        job.resultPath,
-        JSON.stringify(job.result, null, 2),
-        "utf-8"
+      await fs3.rm(jobDirectory(this.rootDirectory, jobId), {
+        recursive: true,
+        force: true
+      });
+      await removeWorkspaceLock(
+        this.rootDirectory,
+        options.workingDirectory,
+        jobId
       );
-      await new Promise((resolve) => job.stdoutStream.end(resolve));
-      await new Promise((resolve) => job.stderrStream.end(resolve));
-      await this.persistStatus(job);
-    }).catch(async (error2) => {
-      job.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
-      job.currentPid = null;
-      job.workspaceAfter = await captureWorkspaceSnapshot(job.workingDirectory);
-      job.status = "failed";
-      job.result = {
-        jobId,
-        status: "failed",
-        exitCode: null,
-        signal: null,
-        durationMs: 0,
-        stdout: "",
-        stderr: "",
-        stdoutTruncated: false,
-        stderrTruncated: false,
-        parsedOutput: null,
-        error: `Unexpected async execution failure: ${error2 instanceof Error ? error2.message : String(error2)}`,
-        workingDirectory: job.workingDirectory,
-        allowedTools: [...job.allowedTools],
-        executionMode: job.executionMode,
-        workspaceBefore: job.workspaceBefore,
-        workspaceAfter: job.workspaceAfter
-      };
-      await new Promise((resolve) => job.stdoutStream.end(resolve));
-      await new Promise((resolve) => job.stderrStream.end(resolve));
-      await this.persistStatus(job);
-    });
-    return {
-      jobId,
-      status: job.status,
-      workingDirectory: job.workingDirectory,
-      allowedTools: [...job.allowedTools],
-      executionMode: job.executionMode,
-      timeoutSeconds: job.timeoutSeconds,
-      createdAt: job.createdAt,
-      startedAt: job.startedAt
-    };
+      throw error2;
+    }
   }
   async waitForResult(jobId) {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
-    }
-    if (job.result) {
-      return job.result;
-    }
-    if (!job.runner) {
-      throw new Error(`Job ${jobId} has no active runner`);
-    }
-    await job.completionPromise;
-    if (job.result) {
-      return job.result;
-    }
-    const runResult = await job.runner.completed;
-    return {
-      ...runResult,
-      jobId,
-      workingDirectory: job.workingDirectory,
-      allowedTools: [...job.allowedTools],
-      executionMode: job.executionMode,
-      workspaceBefore: job.workspaceBefore,
-      workspaceAfter: job.workspaceAfter ?? {
-        kind: "non_git",
-        note: "Workspace snapshot not available."
+    await this.initialization;
+    while (true) {
+      const status = await this.getExecutionStatus(jobId);
+      if (isTerminalStatus(status.status)) {
+        if (!status.result) {
+          throw new Error(`Job ${jobId} reached ${status.status} without a result`);
+        }
+        return status.result;
       }
-    };
-  }
-  getExecutionStatus(jobId) {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
+      await new Promise((resolve2) => setTimeout(resolve2, 100));
     }
-    return toStatusResult(job);
+  }
+  async waitForResultOrStatus(jobId, maxWaitMs) {
+    await this.initialization;
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      const status = await this.getExecutionStatus(jobId);
+      if (isTerminalStatus(status.status) && status.result) return status.result;
+      await new Promise((resolve2) => setTimeout(resolve2, 100));
+    }
+    return this.getExecutionStatus(jobId);
+  }
+  async getExecutionStatus(jobId) {
+    await this.initialization;
+    try {
+      return await this.recoverIfNeeded(await readStatus(this.rootDirectory, jobId));
+    } catch (error2) {
+      if (error2.code === "ENOENT") {
+        throw new Error(`Unknown job: ${jobId}`);
+      }
+      throw error2;
+    }
   }
   async getExecutionLogs(jobId, stream, offset, limit) {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
+    await this.initialization;
+    const status = await this.getExecutionStatus(jobId);
+    const filePath = jobPath(this.rootDirectory, jobId, `${stream}.log`);
+    const handle = await fs3.open(filePath, "r");
+    try {
+      const stat4 = await handle.stat();
+      const safeOffset = Math.min(offset, stat4.size);
+      const length = Math.min(limit, stat4.size - safeOffset);
+      const buffer = Buffer.alloc(length);
+      await handle.read(buffer, 0, length, safeOffset);
+      return {
+        jobId,
+        status: status.status,
+        stream,
+        offset: safeOffset,
+        nextOffset: safeOffset + length,
+        eof: safeOffset + length >= stat4.size,
+        text: buffer.toString("utf-8")
+      };
+    } finally {
+      await handle.close();
     }
-    const fileContent = stream === "stdout" ? job.stdoutText : job.stderrText;
-    const nextOffset = Math.min(offset + limit, fileContent.length);
-    const text = fileContent.slice(offset, nextOffset);
-    return {
-      jobId,
-      status: job.status,
-      stream,
-      offset,
-      nextOffset,
-      eof: nextOffset >= fileContent.length,
-      text
-    };
   }
   async cancelExecution(jobId) {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Unknown job: ${jobId}`);
+    await this.initialization;
+    const status = await this.getExecutionStatus(jobId);
+    if (!isTerminalStatus(status.status)) {
+      status.status = "cancelling";
+      await fs3.writeFile(jobPath(this.rootDirectory, jobId, "cancel.flag"), "");
+      await writeStatus(this.rootDirectory, jobId, status);
+      if (status.workerPid) signalProcessGroup(status.workerPid, "SIGTERM");
     }
-    if (job.status === "running") {
-      job.status = "cancelling";
-      await this.persistStatus(job);
-      job.runner?.cancel();
-    }
-    return toStatusResult(job);
+    return status;
   }
 };
 
 // src/server.ts
 var SERVER_NAME = "claude-executor";
 var SERVER_VERSION = "0.1.0";
-var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests. When you want Codex to stay in a planner/reviewer role while Claude performs all code edits, set executionMode to claude_write_only.`;
+var DEFAULT_SYNC_WAIT_MS = 9e4;
+var MAX_SYNC_WAIT_MS = 9e4;
+var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If Codex verification fails, create a focused repair plan and delegate it to Claude without asking the user to reconfirm. Repeat until verification passes. Stop the loop only when Claude returns failed or environment_error, or the user cancels. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
 var EXECUTION_MODE_SCHEMA = external_exports.enum(["standard", "claude_write_only"]).default("standard").describe(
   "Execution collaboration mode. Use claude_write_only when Codex should stay in a planner/reviewer role and Claude should perform all code changes inside the delegated run."
 );
 var executionJobManager = new ExecutionJobManager();
+function isExecutionResponseError(status) {
+  return !["completed", "running", "restarting", "cancelling"].includes(status);
+}
+function getSyncWaitMs() {
+  const configured = Number(process.env.CLAUDE_EXECUTOR_SYNC_WAIT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) {
+    return DEFAULT_SYNC_WAIT_MS;
+  }
+  return Math.min(Math.floor(configured), MAX_SYNC_WAIT_MS);
+}
 function execCommand2(command, args, timeoutMs = 15e3) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     execFile2(
       command,
       args,
@@ -21814,7 +21868,7 @@ function execCommand2(command, args, timeoutMs = 15e3) {
           reject(error2);
           return;
         }
-        resolve({ stdout: stdout.toString(), stderr: stderr.toString() });
+        resolve2({ stdout: stdout.toString(), stderr: stderr.toString() });
       }
     );
   });
@@ -21838,7 +21892,7 @@ function createServer() {
     const allowedTools = mergeAllowedTools(validatedExtraTools);
     const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
     const executionMode = params.executionMode ?? "standard";
-    const timeoutSeconds = params.timeoutSeconds ?? 1800;
+    const timeoutSeconds = params.timeoutSeconds ?? 0;
     return {
       resolvedDir,
       allowedTools,
@@ -21858,6 +21912,11 @@ function createServer() {
       let claudeVersion = null;
       let authenticated = false;
       let authMethod = null;
+      try {
+        await fs4.access(resolveWorkerPath());
+      } catch {
+        errors.push(`Persistent worker bundle is missing: ${resolveWorkerPath()}`);
+      }
       try {
         const { stdout } = await execCommand2(claudeBin, ["--version"]);
         claudeVersion = stdout.trim();
@@ -21908,14 +21967,14 @@ function createServer() {
   );
   server.tool(
     "execute_plan",
-    "Execute an already confirmed implementation plan with local Claude Code.",
+    "Execute an already confirmed implementation plan with local Claude Code. Returns a running job when execution exceeds the synchronous wait budget.",
     {
       workingDirectory: external_exports.string().describe("Absolute path to the working directory"),
       plan: external_exports.string().trim().min(1).max(1e5).describe("The implementation plan to execute"),
       acceptanceCriteria: external_exports.array(external_exports.string().trim().min(1)).max(50).optional().describe("Acceptance criteria for the plan"),
       extraAllowedTools: external_exports.array(external_exports.string().min(1).max(300)).max(20).optional().describe("Additional tool permissions for this execution"),
       executionMode: EXECUTION_MODE_SCHEMA.optional(),
-      timeoutSeconds: external_exports.number().int().min(60).max(7200).optional().describe("Timeout in seconds (60-7200, default 1800)")
+      timeoutSeconds: external_exports.number().int().min(0).max(7200).optional().describe("Deprecated compatibility field. Persistent workers always run without a hard Claude deadline.")
     },
     {
       destructiveHint: true,
@@ -21939,10 +21998,11 @@ function createServer() {
           timeoutSeconds,
           workspaceBefore
         });
-        const result = await executionJobManager.waitForResult(
-          started.jobId
+        const result = await executionJobManager.waitForResultOrStatus(
+          started.jobId,
+          getSyncWaitMs()
         );
-        const isError = result.status !== "completed";
+        const isError = isExecutionResponseError(result.status);
         return {
           isError,
           content: [
@@ -21970,14 +22030,14 @@ function createServer() {
   );
   server.tool(
     "start_execution",
-    "Start an already confirmed implementation plan in the background for long-running Claude Code work.",
+    "Start an already confirmed implementation or repair plan in the background. Prefer this tool to avoid MCP client request timeouts.",
     {
       workingDirectory: external_exports.string().describe("Absolute path to the working directory"),
       plan: external_exports.string().trim().min(1).max(1e5).describe("The implementation plan to execute"),
       acceptanceCriteria: external_exports.array(external_exports.string().trim().min(1)).max(50).optional().describe("Acceptance criteria for the plan"),
       extraAllowedTools: external_exports.array(external_exports.string().min(1).max(300)).max(20).optional().describe("Additional tool permissions for this execution"),
       executionMode: EXECUTION_MODE_SCHEMA.optional(),
-      timeoutSeconds: external_exports.number().int().min(60).max(7200).optional().describe("Timeout in seconds (60-7200, default 1800)")
+      timeoutSeconds: external_exports.number().int().min(0).max(7200).optional().describe("Deprecated compatibility field. Persistent workers always run without a hard Claude deadline.")
     },
     {
       destructiveHint: true,
@@ -22030,13 +22090,13 @@ function createServer() {
   );
   server.tool(
     "get_execution_status",
-    "Get the current state of a background Claude execution job.",
+    "Get persistent job state, attempt/recovery metadata, and latest readable Claude progress.",
     {
       jobId: external_exports.string().uuid().describe("The job identifier returned by start_execution")
     },
     async ({ jobId }) => {
       try {
-        const result = executionJobManager.getExecutionStatus(jobId);
+        const result = await executionJobManager.getExecutionStatus(jobId);
         return {
           content: [
             {
@@ -22070,8 +22130,8 @@ function createServer() {
     {
       jobId: external_exports.string().uuid().describe("The job identifier returned by start_execution"),
       stream: external_exports.enum(["stdout", "stderr"]).default("stderr").describe("Which log stream to read"),
-      offset: external_exports.number().int().min(0).default(0).describe("Character offset to start reading from"),
-      limit: external_exports.number().int().min(1).max(65536).default(65536).describe("Maximum number of characters to return")
+      offset: external_exports.number().int().min(0).default(0).describe("Byte offset to start reading from"),
+      limit: external_exports.number().int().min(1).max(65536).default(65536).describe("Maximum number of log bytes to return")
     },
     async ({ jobId, stream, offset, limit }) => {
       try {

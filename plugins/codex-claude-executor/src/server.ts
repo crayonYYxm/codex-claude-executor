@@ -8,22 +8,29 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import * as os from "node:os";
 import { execFile } from "node:child_process";
+import * as fs from "node:fs/promises";
 import {
   resolveWorkingDirectory,
   captureWorkspaceSnapshot,
 } from "./workspace.js";
 import { mergeAllowedTools, validateExtraAllowedTools } from "./permissions.js";
-import { ExecutionJobManager } from "./job-manager.js";
+import {
+  ExecutionJobManager,
+  resolveWorkerPath,
+} from "./job-manager.js";
 import type {
   EnvironmentCheckResult,
   ExecutionMode,
   ExecutePlanInput,
-  ExecutePlanResult,
+  ExecutePlanResponse,
+  JobStatus,
 } from "./types.js";
 
 const SERVER_NAME = "claude-executor";
 const SERVER_VERSION = "0.1.0";
-const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests. When you want Codex to stay in a planner/reviewer role while Claude performs all code edits, set executionMode to claude_write_only.`;
+const DEFAULT_SYNC_WAIT_MS = 90_000;
+const MAX_SYNC_WAIT_MS = 90_000;
+const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If Codex verification fails, create a focused repair plan and delegate it to Claude without asking the user to reconfirm. Repeat until verification passes. Stop the loop only when Claude returns failed or environment_error, or the user cancels. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
 const EXECUTION_MODE_SCHEMA = z
   .enum(["standard", "claude_write_only"])
   .default("standard")
@@ -32,6 +39,18 @@ const EXECUTION_MODE_SCHEMA = z
   );
 
 const executionJobManager = new ExecutionJobManager();
+
+export function isExecutionResponseError(status: JobStatus): boolean {
+  return !["completed", "running", "restarting", "cancelling"].includes(status);
+}
+
+function getSyncWaitMs(): number {
+  const configured = Number(process.env.CLAUDE_EXECUTOR_SYNC_WAIT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) {
+    return DEFAULT_SYNC_WAIT_MS;
+  }
+  return Math.min(Math.floor(configured), MAX_SYNC_WAIT_MS);
+}
 
 /**
  * Execute a command with timeout, returning stdout.
@@ -82,7 +101,7 @@ export function createServer(): McpServer {
     const allowedTools = mergeAllowedTools(validatedExtraTools);
     const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
     const executionMode: ExecutionMode = params.executionMode ?? "standard";
-    const timeoutSeconds = params.timeoutSeconds ?? 1800;
+    const timeoutSeconds = params.timeoutSeconds ?? 0;
 
     return {
       resolvedDir,
@@ -105,6 +124,12 @@ export function createServer(): McpServer {
       let claudeVersion: string | null = null;
       let authenticated = false;
       let authMethod: string | null = null;
+
+      try {
+        await fs.access(resolveWorkerPath());
+      } catch {
+        errors.push(`Persistent worker bundle is missing: ${resolveWorkerPath()}`);
+      }
 
       // Check Claude version
       try {
@@ -163,7 +188,7 @@ export function createServer(): McpServer {
   // Register execute_plan tool
   server.tool(
     "execute_plan",
-    "Execute an already confirmed implementation plan with local Claude Code.",
+    "Execute an already confirmed implementation plan with local Claude Code. Returns a running job when execution exceeds the synchronous wait budget.",
     {
       workingDirectory: z.string().describe("Absolute path to the working directory"),
       plan: z
@@ -186,10 +211,10 @@ export function createServer(): McpServer {
       timeoutSeconds: z
         .number()
         .int()
-        .min(60)
+        .min(0)
         .max(7200)
         .optional()
-        .describe("Timeout in seconds (60-7200, default 1800)"),
+        .describe("Deprecated compatibility field. Persistent workers always run without a hard Claude deadline."),
     },
     {
       destructiveHint: true,
@@ -214,11 +239,13 @@ export function createServer(): McpServer {
           timeoutSeconds,
           workspaceBefore,
         });
-        const result: ExecutePlanResult = await executionJobManager.waitForResult(
-          started.jobId
-        );
+        const result: ExecutePlanResponse =
+          await executionJobManager.waitForResultOrStatus(
+            started.jobId,
+            getSyncWaitMs()
+          );
 
-        const isError = result.status !== "completed";
+        const isError = isExecutionResponseError(result.status);
 
         return {
           isError,
@@ -248,7 +275,7 @@ export function createServer(): McpServer {
 
   server.tool(
     "start_execution",
-    "Start an already confirmed implementation plan in the background for long-running Claude Code work.",
+    "Start an already confirmed implementation or repair plan in the background. Prefer this tool to avoid MCP client request timeouts.",
     {
       workingDirectory: z.string().describe("Absolute path to the working directory"),
       plan: z
@@ -271,10 +298,10 @@ export function createServer(): McpServer {
       timeoutSeconds: z
         .number()
         .int()
-        .min(60)
+        .min(0)
         .max(7200)
         .optional()
-        .describe("Timeout in seconds (60-7200, default 1800)"),
+        .describe("Deprecated compatibility field. Persistent workers always run without a hard Claude deadline."),
     },
     {
       destructiveHint: true,
@@ -329,13 +356,13 @@ export function createServer(): McpServer {
 
   server.tool(
     "get_execution_status",
-    "Get the current state of a background Claude execution job.",
+    "Get persistent job state, attempt/recovery metadata, and latest readable Claude progress.",
     {
       jobId: z.string().uuid().describe("The job identifier returned by start_execution"),
     },
     async ({ jobId }) => {
       try {
-        const result = executionJobManager.getExecutionStatus(jobId);
+        const result = await executionJobManager.getExecutionStatus(jobId);
         return {
           content: [
             {
@@ -378,14 +405,14 @@ export function createServer(): McpServer {
         .int()
         .min(0)
         .default(0)
-        .describe("Character offset to start reading from"),
+        .describe("Byte offset to start reading from"),
       limit: z
         .number()
         .int()
         .min(1)
         .max(65536)
         .default(65536)
-        .describe("Maximum number of characters to return"),
+        .describe("Maximum number of log bytes to return"),
     },
     async ({ jobId, stream, offset, limit }) => {
       try {

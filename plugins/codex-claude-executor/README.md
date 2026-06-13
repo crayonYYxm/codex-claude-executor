@@ -1,17 +1,18 @@
 # Codex Claude Executor
 
-A Codex plugin that lets Codex plan implementation work, obtain user confirmation, delegate execution to local Claude Code, and review the resulting changes.
+A Codex plugin that lets Codex plan implementation work, delegate execution to local Claude Code, and autonomously verify and repair the resulting changes.
 
 ## What It Does
 
 This plugin enables a workflow where:
 
 1. **Codex inspects** a repository and prepares an implementation plan
-2. **Codex shows** the plan and any additional requested permissions to the user
-3. **After user confirmation**, Codex calls an MCP tool bundled inside the plugin
-4. **The MCP server** invokes the locally installed Claude Code CLI to execute the plan
-5. **The MCP server** either returns structured execution results immediately or starts a background job for long-running work
-6. **Codex independently inspects** the resulting changes and reruns relevant tests
+2. **Codex confirms only non-fixed additional permissions when required**
+3. **Codex starts** a background Claude execution through the bundled MCP server
+4. **The MCP server** starts a detached persistent worker that invokes the locally installed Claude Code CLI
+5. **The worker** survives MCP/Codex restarts, persists progress and logs, and restarts stalled Claude runs
+6. **Codex independently verifies** the result, including preview/browser checks when needed
+7. **If verification fails**, Codex sends Claude a focused repair plan and repeats until verification passes
 
 ### Collaboration Modes
 
@@ -25,10 +26,13 @@ User
   │
   ▼
 Codex + plan-and-execute Skill
-  │ confirmed MCP tool call
+  │ background implementation or repair plan
   ▼
 Bundled stdio MCP Server
-  │ spawn without shell
+  │ detached persistent job
+  ▼
+Persistent Worker
+  │ spawn without shell; retry stalled runs
   ▼
 Local claude -p process
   │ edits files and runs allowed commands
@@ -36,17 +40,21 @@ Local claude -p process
 Structured MCP result or background job status
   │
   ▼
-Codex reviews actual diff and reruns tests
+Codex independently verifies actual workspace
+  │ verification failure: focused repair plan
+  └──────────────────────────────────────────► Claude
 ```
 
 ### Responsibility Boundaries
 
-- **Skill:** Controls the expected Codex workflow and user confirmation
-- **MCP server:** Validates input, controls permissions, invokes Claude, and returns execution evidence
+- **Skill:** Controls the autonomous execute, verify, and repair loop
+- **MCP server:** Validates input, controls permissions, recovers persistent jobs, and returns execution evidence
+- **Persistent worker:** Owns Claude execution, activity monitoring, retries, logs, and terminal result persistence
 - **Claude runner:** Manages only the Claude subprocess lifecycle
 - **Workspace module:** Validates paths and captures Git state
 - **Permissions module:** Owns all fixed and per-execution tool rules
-- **Codex:** Performs final review; the MCP server must not claim that work is correct merely because Claude reported success
+- **Claude:** Performs implementation plus relevant tests, builds, lint checks, and typechecks
+- **Codex:** Performs final review and all preview/browser checks; the MCP server must not claim that work is correct merely because Claude reported success
 
 ## Prerequisites
 
@@ -135,7 +143,8 @@ The plugin bundles the MCP server into a single file for distribution:
 npm run bundle
 ```
 
-This creates `dist/mcp-server.mjs` which is the executable entry point for the plugin.
+This creates `dist/mcp-server.mjs` and the detached worker bundle
+`dist/job-worker.mjs`.
 
 ## Installation
 
@@ -177,8 +186,8 @@ The plugin includes a fixed allowlist of safe tools:
 **Safe Git Inspection:**
 - `Bash(git status)`, `Bash(git diff)`, `Bash(git log)`, etc.
 
-**Common Build/Test Commands:**
-- `Bash(npm test)`, `Bash(npm run build)`, `Bash(pytest)`, etc.
+Claude is granted common test, build, and lint commands. Preview and browser
+verification remain Codex responsibilities because they require Codex-side tools.
 
 ### Extra Permissions
 
@@ -190,10 +199,10 @@ The plugin includes a fixed allowlist of safe tools:
 ## MCP Tools
 
 - `check_environment`: verifies Node, Claude Code availability, and Claude authentication
-- `execute_plan`: runs a confirmed plan synchronously and returns the final result
-- `start_execution`: starts a confirmed plan asynchronously for long-running work
-- `get_execution_status`: polls an async job until it reaches a terminal state
-- `get_execution_logs`: reads incremental `stdout` or `stderr` log slices from an async job
+- `execute_plan`: compatibility tool that waits for up to 90 seconds, then returns a running job
+- `start_execution`: preferred tool; starts implementation or repair asynchronously without risking the MCP client request timeout
+- `get_execution_status`: polls an async job until it reaches a terminal state and includes the latest readable Claude progress
+- `get_execution_logs`: reads the full incremental Claude event stream or `stderr` log slices from an async job
 - `cancel_execution`: requests cancellation of a running async job
 
 `execute_plan` and `start_execution` accept an optional `executionMode` field:
@@ -210,6 +219,14 @@ Example:
   "executionMode": "claude_write_only"
 }
 ```
+
+They also accept `timeoutSeconds` for backward compatibility. Persistent workers
+always execute without a hard Claude deadline. A run with no activity for 15
+minutes is restarted automatically, with at most three total attempts.
+
+Persistent jobs are stored under `~/.codex/claude-executor/jobs/`. Terminal jobs
+are removed after seven days. Each stdout/stderr log keeps at most the latest
+20MB.
 
 ## Security Limitations
 
@@ -244,12 +261,15 @@ Example:
 
 ### MCP Tool Timeout
 
-**Error:** `Execution timed out after X seconds`
+**Error:** the MCP client stops waiting after roughly 120 seconds
 
 **Solution:**
-1. Increase `timeoutSeconds` in `execute_plan` call (max 7200)
-2. Check if Claude is hanging on a prompt
-3. Verify Claude can access the working directory
+1. Use `start_execution` for implementation and repair runs.
+2. Poll the returned `jobId` with `get_execution_status`.
+3. Leave `timeoutSeconds` omitted; persistent workers do not use a hard deadline.
+
+`timeoutSeconds` is retained for compatibility and does not change the MCP
+client timeout or persistent worker lifetime.
 
 ### Long-Running Tasks
 
@@ -260,6 +280,33 @@ Example:
 2. Poll with `get_execution_status`
 3. Read progress with `get_execution_logs`
 4. Cancel with `cancel_execution` if the run is stuck or no longer needed
+
+While a job is running, `get_execution_status` includes:
+
+```json
+{
+  "status": "running",
+  "attempt": 1,
+  "maxAttempts": 3,
+  "recoveryCount": 0,
+  "lastActivityAt": "2026-06-13T10:20:00.000Z",
+  "failureKind": null,
+  "logsTruncated": { "stdout": false, "stderr": false },
+  "progress": {
+    "eventCount": 4,
+    "message": "Using Write: src/example.ts",
+    "updatedAt": "2026-06-13T10:20:00.000Z"
+  }
+}
+```
+
+Progress is stage-based rather than percentage-based because Claude does not
+expose a reliable total step count. A worker restarts Claude after 15 minutes
+without activity. After the Claude process exits, the job
+changes from `running` to one terminal state: `completed`, `failed`,
+`timed_out`, `cancelled`, or `environment_error`. A zero process exit code is
+still reported as `failed` when Claude's final result has `is_error: true` or
+does not contain a final structured `success` result.
 
 ### Plugin MCP Not Visible
 

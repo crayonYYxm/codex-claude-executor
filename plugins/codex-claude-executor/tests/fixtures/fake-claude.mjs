@@ -9,6 +9,9 @@
  * - FAKE_CLAUDE_MODE=invalid-json
  * - FAKE_CLAUDE_MODE=timeout
  * - FAKE_CLAUDE_MODE=slow-success
+ * - FAKE_CLAUDE_MODE=stream-progress
+ * - FAKE_CLAUDE_MODE=result-error
+ * - FAKE_CLAUDE_MODE=structured-error
  * - FAKE_CLAUDE_MODE=large-output
  * - FAKE_CLAUDE_MODE=auth-success
  * - FAKE_CLAUDE_MODE=auth-failure
@@ -16,6 +19,7 @@
 
 import { readFileSync } from "node:fs";
 import { writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 
 const mode = process.env.FAKE_CLAUDE_MODE || "success";
@@ -60,11 +64,18 @@ try {
 switch (mode) {
   case "success": {
     const result = {
-      status: "success",
-      message: "Plan executed successfully",
-      changedFiles: ["src/example.ts"],
-      commandsRun: ["npm test"],
-      testResults: { passed: 5, failed: 0 },
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "Plan executed successfully",
+      structured_output: {
+        status: "success",
+        summary: "Plan executed successfully",
+        changedFiles: ["src/example.ts"],
+        commandsExecuted: ["npm test"],
+        checks: ["npm test passed"],
+      },
+      args: process.argv.slice(2),
       prompt,
     };
     console.log(JSON.stringify(result));
@@ -99,6 +110,51 @@ switch (mode) {
     break;
   }
 
+  case "stall-then-success": {
+    const attemptFile = process.env.FAKE_CLAUDE_ATTEMPT_FILE;
+    let attempt = 0;
+    try {
+      attempt = Number(readFileSync(attemptFile, "utf-8"));
+    } catch {}
+    attempt += 1;
+    writeFileSync(attemptFile, String(attempt));
+    if (attempt < 3) {
+      process.on("SIGTERM", () => process.exit(0));
+      setInterval(() => {}, 60_000);
+      break;
+    }
+    console.log(
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Recovered after stalls.",
+        structured_output: {
+          status: "success",
+          summary: "Recovered after stalls.",
+        },
+      })
+    );
+    process.exit(0);
+  }
+
+  case "delete-workspace": {
+    rmSync(process.cwd(), { recursive: true, force: true });
+    console.log(
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Workspace removed.",
+        structured_output: {
+          status: "success",
+          summary: "Workspace removed.",
+        },
+      })
+    );
+    process.exit(0);
+  }
+
   case "slow-success": {
     let cancelled = false;
     process.on("SIGTERM", () => {
@@ -115,14 +171,123 @@ switch (mode) {
     setTimeout(() => {
       if (cancelled) return;
       const result = {
-        status: "success",
-        message: "Slow plan executed successfully",
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Slow plan executed successfully",
+        structured_output: {
+          status: "success",
+          summary: "Slow plan executed successfully",
+        },
         prompt,
       };
       process.stdout.write(JSON.stringify(result));
       process.exit(0);
     }, 350);
     break;
+  }
+
+  case "stream-progress": {
+    const events = [
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "fake-session",
+      },
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Write",
+              input: { file_path: "src/example.ts" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "File written",
+              is_error: false,
+            },
+          ],
+        },
+      },
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "Implementation complete." }],
+        },
+      },
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Implemented the requested change.",
+        structured_output: {
+          status: "success",
+          summary: "Implemented the requested change.",
+        },
+      },
+    ];
+
+    events.forEach((event, index) => {
+      setTimeout(() => {
+        process.stdout.write(`${JSON.stringify(event)}\n`);
+        if (index === events.length - 1) {
+          process.exit(0);
+        }
+      }, index * 40);
+    });
+    break;
+  }
+
+  case "result-error": {
+    console.log(
+      JSON.stringify({
+        type: "result",
+        subtype: "error",
+        is_error: true,
+        result: "Claude could not complete the task.",
+      })
+    );
+    process.exit(0);
+  }
+
+  case "result-without-structured-output": {
+    console.log(
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Finished without the required structured output.",
+      })
+    );
+    process.exit(0);
+  }
+
+  case "structured-error": {
+    console.log(
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "I could not complete the required checks.",
+        structured_output: {
+          status: "error",
+          summary: "Implementation stopped because the required test command failed.",
+          error: "npm test failed with 2 failing tests",
+        },
+      })
+    );
+    process.exit(0);
   }
 
   case "ignore-sigterm": {
@@ -137,7 +302,7 @@ switch (mode) {
       process.execPath,
       [
         "-e",
-        "setTimeout(() => { process.stdout.write(JSON.stringify({ status: 'success' })); }, 100)",
+        "setTimeout(() => { process.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, structured_output: { status: 'success', summary: 'done' } })); }, 100)",
       ],
       {
         stdio: ["ignore", "inherit", "inherit"],
@@ -160,7 +325,7 @@ switch (mode) {
         i++;
       }
       // All chunks written, now write the final JSON
-      process.stdout.write("\n" + JSON.stringify({ status: "success" }) + "\n", () => {
+      process.stdout.write("\n" + JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: { status: "success", summary: "done" } }) + "\n", () => {
         process.exit(0);
       });
     }

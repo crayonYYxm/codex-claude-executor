@@ -51,6 +51,11 @@ describe("plugin structure", () => {
     expect(fs.existsSync(bundlePath)).toBe(true);
   });
 
+  it("dist/job-worker.mjs exists after bundling", () => {
+    const bundlePath = path.join(PROJECT_ROOT, "dist", "job-worker.mjs");
+    expect(fs.existsSync(bundlePath)).toBe(true);
+  });
+
   it("skill frontmatter contains required name and description", () => {
     const skillPath = path.join(
       PROJECT_ROOT,
@@ -64,6 +69,26 @@ describe("plugin structure", () => {
     expect(content).toMatch(/^---\n/);
     expect(content).toContain("name: plan-and-execute");
     expect(content).toContain("description:");
+  });
+
+  it("documents the autonomous Codex review and Claude repair loop", () => {
+    const skillPath = path.join(
+      PROJECT_ROOT,
+      "skills",
+      "plan-and-execute",
+      "SKILL.md"
+    );
+    const content = fs.readFileSync(skillPath, "utf-8");
+
+    expect(content).toContain(
+      "If Codex verification fails, create a focused repair plan and delegate it to Claude without asking the user to reconfirm."
+    );
+    expect(content).toContain(
+      "Stop the loop only when Claude returns `failed` or `environment_error`"
+    );
+    expect(content).toContain(
+      "Use `start_execution` by default for implementation and repair runs"
+    );
   });
 
   it("no production source file contains console.log", () => {
