@@ -88,6 +88,12 @@ function emitProgressFromEvent(event, toolNames, onProgress) {
     onProgress({ message: "Claude started" });
     return;
   }
+  if (event.type === "system" && event.subtype === "thinking_tokens" && typeof event.estimated_tokens === "number") {
+    onProgress({
+      message: `Claude thinking (${event.estimated_tokens} estimated tokens)`
+    });
+    return;
+  }
   if (event.type === "result") {
     onProgress({
       message: isClaudeErrorResult(event) ? "Claude reported an error" : "Claude finished"

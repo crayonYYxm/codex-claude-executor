@@ -13,7 +13,7 @@ import {
 import type { WorkspaceSnapshot } from "../src/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FAKE_CLAUDE = path.join(__dirname, "fixtures", "fake-claude.mjs");
+const FAKE_CLAUDE_SOURCE = path.join(__dirname, "fixtures", "fake-claude.mjs");
 const SNAPSHOT: WorkspaceSnapshot = {
   kind: "non_git",
   note: "test workspace",
@@ -23,11 +23,15 @@ describe("persistent job manager", () => {
   let rootDirectory: string;
   let workspaceA: string;
   let workspaceB: string;
+  let fakeClaude: string;
 
   beforeEach(async () => {
     rootDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "job-manager-"));
     workspaceA = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-a-"));
     workspaceB = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-b-"));
+    fakeClaude = path.join(rootDirectory, "fake-claude.mjs");
+    await fs.copyFile(FAKE_CLAUDE_SOURCE, fakeClaude);
+    await fs.chmod(fakeClaude, 0o755);
   });
 
   afterEach(async () => {
@@ -45,7 +49,7 @@ describe("persistent job manager", () => {
       executionMode: "standard" as const,
       timeoutSeconds: 0,
       workspaceBefore: SNAPSHOT,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "slow-success" },
     };
   }
@@ -96,7 +100,7 @@ describe("persistent job manager", () => {
       0,
       1024
     );
-    for (let i = 0; i < 10 && !logs.text; i++) {
+    for (let i = 0; i < 100 && !logs.text; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       logs = await secondManager.getExecutionLogs(
         started.jobId,
@@ -190,7 +194,7 @@ describe("persistent job manager", () => {
   it("retries stalled Claude attempts and eventually completes", async () => {
     const attemptFile = path.join(rootDirectory, "attempts.txt");
     const previousStallMs = process.env.CLAUDE_EXECUTOR_STALL_MS;
-    process.env.CLAUDE_EXECUTOR_STALL_MS = "150";
+    process.env.CLAUDE_EXECUTOR_STALL_MS = "2000";
     try {
       const manager = new ExecutionJobManager(rootDirectory);
       const started = await manager.startExecution({

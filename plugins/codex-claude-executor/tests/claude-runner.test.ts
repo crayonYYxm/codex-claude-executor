@@ -7,7 +7,7 @@ import { runClaude, startClaude } from "../src/claude-runner.js";
 import type { WorkspaceSnapshot } from "../src/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FAKE_CLAUDE = path.join(__dirname, "fixtures", "fake-claude.mjs");
+const FAKE_CLAUDE_SOURCE = path.join(__dirname, "fixtures", "fake-claude.mjs");
 const WORKSPACE_BEFORE: WorkspaceSnapshot = {
   kind: "git",
   repositoryRoot: "/tmp/example",
@@ -18,10 +18,14 @@ const WORKSPACE_BEFORE: WorkspaceSnapshot = {
 
 describe("claude-runner", () => {
   let tempDir: string;
+  let fakeClaude: string;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "runner-test-"));
     tempDir = await fs.realpath(tempDir);
+    fakeClaude = path.join(tempDir, "fake-claude.mjs");
+    await fs.copyFile(FAKE_CLAUDE_SOURCE, fakeClaude);
+    await fs.chmod(fakeClaude, 0o755);
   });
 
   afterEach(async () => {
@@ -35,7 +39,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read", "Write"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "success" },
     });
 
@@ -56,7 +60,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read", "Write"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "success" },
     });
 
@@ -73,7 +77,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "failure" },
     });
 
@@ -89,7 +93,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "invalid-json" },
     });
 
@@ -105,7 +109,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "auth-success" },
     });
 
@@ -120,7 +124,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "result-without-structured-output" },
     });
 
@@ -149,7 +153,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 2,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "timeout" },
     });
 
@@ -164,7 +168,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 0,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "slow-success" },
     });
 
@@ -179,7 +183,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "large-output" },
     });
 
@@ -199,7 +203,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "success" },
     });
 
@@ -218,7 +222,7 @@ describe("claude-runner", () => {
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
       executionMode: "claude_write_only",
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "success" },
     });
 
@@ -242,7 +246,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read", "Write"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "success" },
     });
 
@@ -272,7 +276,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "success" },
     });
 
@@ -286,7 +290,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read", "Bash(git status)", "Bash(npm test *)"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "success" },
     });
 
@@ -301,7 +305,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 1,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: {
         FAKE_CLAUDE_MODE: "ignore-sigterm",
         FAKE_CLAUDE_PID_FILE: pidFile,
@@ -330,7 +334,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "delayed-output" },
     });
 
@@ -342,17 +346,28 @@ describe("claude-runner", () => {
   });
 
   it("allows an in-flight process to be cancelled explicitly", async () => {
-    const execution = startClaude({
-      workingDirectory: tempDir,
-      plan: "Long running test plan",
-      allowedTools: ["Read"],
-      timeoutSeconds: 30,
-      workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
-      env: { FAKE_CLAUDE_MODE: "slow-success" },
+    let resolveStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      resolveStarted = resolve;
     });
+    const execution = startClaude(
+      {
+        workingDirectory: tempDir,
+        plan: "Long running test plan",
+        allowedTools: ["Read"],
+        timeoutSeconds: 30,
+        workspaceBefore: WORKSPACE_BEFORE,
+        claudeBin: fakeClaude,
+        env: { FAKE_CLAUDE_MODE: "slow-success" },
+      },
+      {
+        onStderr: (chunk) => {
+          if (chunk.includes("starting execution")) resolveStarted();
+        },
+      }
+    );
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await started;
     execution.cancel();
 
     const result = await execution.completed;
@@ -370,7 +385,7 @@ describe("claude-runner", () => {
         allowedTools: ["Read", "Write"],
         timeoutSeconds: 30,
         workspaceBefore: WORKSPACE_BEFORE,
-        claudeBin: FAKE_CLAUDE,
+        claudeBin: fakeClaude,
         env: { FAKE_CLAUDE_MODE: "stream-progress" },
       },
       {
@@ -389,6 +404,30 @@ describe("claude-runner", () => {
     expect(progress).toContain("Claude finished");
   });
 
+  it("emits readable progress while Claude is thinking", async () => {
+    const progress: string[] = [];
+    const execution = startClaude(
+      {
+        workingDirectory: tempDir,
+        plan: "Think before writing a file",
+        allowedTools: ["Read", "Write"],
+        timeoutSeconds: 30,
+        workspaceBefore: WORKSPACE_BEFORE,
+        claudeBin: fakeClaude,
+        env: { FAKE_CLAUDE_MODE: "thinking-progress" },
+      },
+      {
+        onProgress: (event) => progress.push(event.message),
+      }
+    );
+
+    const result = await execution.completed;
+
+    expect(result.status).toBe("completed");
+    expect(progress).toContain("Claude thinking (128 estimated tokens)");
+    expect(progress).toContain("Claude finished");
+  });
+
   it("treats an error result as failed even when Claude exits with code zero", async () => {
     const result = await runClaude({
       workingDirectory: tempDir,
@@ -396,7 +435,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "result-error" },
     });
 
@@ -412,7 +451,7 @@ describe("claude-runner", () => {
       allowedTools: ["Read", "Bash(npm test)"],
       timeoutSeconds: 30,
       workspaceBefore: WORKSPACE_BEFORE,
-      claudeBin: FAKE_CLAUDE,
+      claudeBin: fakeClaude,
       env: { FAKE_CLAUDE_MODE: "structured-error" },
     });
 

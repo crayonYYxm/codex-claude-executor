@@ -5,6 +5,7 @@
   "type": "module",
   "main": "./dist/mcp-server.mjs",
   "scripts": {
+    "benchmark:codex-tokens": "node ./scripts/compare-codex-token-usage.mjs",
     "clean": "rm -rf build dist",
     "build": "tsc -p tsconfig.json",
     "typecheck:test": "tsc -p tsconfig.test.json",

@@ -8,11 +8,21 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const FAKE_CLAUDE = path.join(__dirname, "fixtures", "fake-claude.mjs");
+const FAKE_CLAUDE_SOURCE = path.join(__dirname, "fixtures", "fake-claude.mjs");
 const MCP_SERVER = path.join(PROJECT_ROOT, "dist", "mcp-server.mjs");
+const FAKE_CLAUDE_ROOT = fs.mkdtempSync(
+  path.join(os.tmpdir(), "server-integration-fixture-")
+);
+const FAKE_CLAUDE = path.join(FAKE_CLAUDE_ROOT, "fake-claude.mjs");
 const SHARED_JOB_ROOT = fs.mkdtempSync(
   path.join(os.tmpdir(), "server-integration-shared-")
 );
+fs.copyFileSync(FAKE_CLAUDE_SOURCE, FAKE_CLAUDE);
+fs.chmodSync(FAKE_CLAUDE, 0o755);
+
+afterAll(() => {
+  fs.rmSync(FAKE_CLAUDE_ROOT, { recursive: true, force: true });
+});
 
 async function createClient(
   mode: string,

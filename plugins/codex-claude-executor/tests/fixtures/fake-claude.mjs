@@ -10,6 +10,7 @@
  * - FAKE_CLAUDE_MODE=timeout
  * - FAKE_CLAUDE_MODE=slow-success
  * - FAKE_CLAUDE_MODE=stream-progress
+ * - FAKE_CLAUDE_MODE=thinking-progress
  * - FAKE_CLAUDE_MODE=result-error
  * - FAKE_CLAUDE_MODE=structured-error
  * - FAKE_CLAUDE_MODE=large-output
@@ -225,6 +226,43 @@ switch (mode) {
         message: {
           content: [{ type: "text", text: "Implementation complete." }],
         },
+      },
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Implemented the requested change.",
+        structured_output: {
+          status: "success",
+          summary: "Implemented the requested change.",
+        },
+      },
+    ];
+
+    events.forEach((event, index) => {
+      setTimeout(() => {
+        process.stdout.write(`${JSON.stringify(event)}\n`);
+        if (index === events.length - 1) {
+          process.exit(0);
+        }
+      }, index * 40);
+    });
+    break;
+  }
+
+  case "thinking-progress": {
+    const events = [
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "fake-session",
+      },
+      {
+        type: "system",
+        subtype: "thinking_tokens",
+        estimated_tokens: 128,
+        estimated_tokens_delta: 8,
+        session_id: "fake-session",
       },
       {
         type: "result",
