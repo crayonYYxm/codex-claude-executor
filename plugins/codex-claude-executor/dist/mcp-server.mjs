@@ -21280,6 +21280,7 @@ import { spawn } from "node:child_process";
 var MAX_OUTPUT_SIZE = 2 * 1024 * 1024;
 var SIGTERM_WAIT_MS = 5e3;
 function buildPrompt(options) {
+  const executionMode = options.executionMode ?? "standard";
   const sections = [
     "This is an already approved implementation plan.",
     "",
@@ -21313,6 +21314,16 @@ function buildPrompt(options) {
     "- Test results",
     "- Unresolved issues"
   );
+  if (executionMode === "claude_write_only") {
+    sections.push(
+      "",
+      "## Collaboration Mode",
+      "- Codex is acting as planner and reviewer only.",
+      "- Claude must perform every code change inside this execution.",
+      "- Do not assume Codex will manually patch your output after this run.",
+      "- If the review later finds issues, expect a follow-up plan instead of a manual Codex fix."
+    );
+  }
   return sections.join("\n");
 }
 function startClaude(options, hooks = {}) {
@@ -21561,6 +21572,7 @@ function toStatusResult(job) {
     status: job.status,
     workingDirectory: job.workingDirectory,
     allowedTools: [...job.allowedTools],
+    executionMode: job.executionMode,
     timeoutSeconds: job.timeoutSeconds,
     createdAt: job.createdAt,
     startedAt: job.startedAt,
@@ -21617,6 +21629,7 @@ var ExecutionJobManager = class {
       status: "running",
       workingDirectory: options.workingDirectory,
       allowedTools: [...options.allowedTools],
+      executionMode: options.executionMode ?? "standard",
       timeoutSeconds: options.timeoutSeconds,
       createdAt,
       startedAt,
@@ -21664,6 +21677,7 @@ var ExecutionJobManager = class {
         jobId,
         workingDirectory: job.workingDirectory,
         allowedTools: [...job.allowedTools],
+        executionMode: job.executionMode,
         workspaceBefore: job.workspaceBefore,
         workspaceAfter: job.workspaceAfter
       };
@@ -21694,6 +21708,7 @@ var ExecutionJobManager = class {
         error: `Unexpected async execution failure: ${error2 instanceof Error ? error2.message : String(error2)}`,
         workingDirectory: job.workingDirectory,
         allowedTools: [...job.allowedTools],
+        executionMode: job.executionMode,
         workspaceBefore: job.workspaceBefore,
         workspaceAfter: job.workspaceAfter
       };
@@ -21706,6 +21721,7 @@ var ExecutionJobManager = class {
       status: job.status,
       workingDirectory: job.workingDirectory,
       allowedTools: [...job.allowedTools],
+      executionMode: job.executionMode,
       timeoutSeconds: job.timeoutSeconds,
       createdAt: job.createdAt,
       startedAt: job.startedAt
@@ -21732,6 +21748,7 @@ var ExecutionJobManager = class {
       jobId,
       workingDirectory: job.workingDirectory,
       allowedTools: [...job.allowedTools],
+      executionMode: job.executionMode,
       workspaceBefore: job.workspaceBefore,
       workspaceAfter: job.workspaceAfter ?? {
         kind: "non_git",
@@ -21781,7 +21798,10 @@ var ExecutionJobManager = class {
 // src/server.ts
 var SERVER_NAME = "claude-executor";
 var SERVER_VERSION = "0.1.0";
-var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests.`;
+var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests. When you want Codex to stay in a planner/reviewer role while Claude performs all code edits, set executionMode to claude_write_only.`;
+var EXECUTION_MODE_SCHEMA = external_exports.enum(["standard", "claude_write_only"]).default("standard").describe(
+  "Execution collaboration mode. Use claude_write_only when Codex should stay in a planner/reviewer role and Claude should perform all code changes inside the delegated run."
+);
 var executionJobManager = new ExecutionJobManager();
 function execCommand2(command, args, timeoutMs = 15e3) {
   return new Promise((resolve, reject) => {
@@ -21817,10 +21837,12 @@ function createServer() {
     }
     const allowedTools = mergeAllowedTools(validatedExtraTools);
     const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
+    const executionMode = params.executionMode ?? "standard";
     const timeoutSeconds = params.timeoutSeconds ?? 1800;
     return {
       resolvedDir,
       allowedTools,
+      executionMode,
       timeoutSeconds,
       workspaceBefore
     };
@@ -21892,6 +21914,7 @@ function createServer() {
       plan: external_exports.string().trim().min(1).max(1e5).describe("The implementation plan to execute"),
       acceptanceCriteria: external_exports.array(external_exports.string().trim().min(1)).max(50).optional().describe("Acceptance criteria for the plan"),
       extraAllowedTools: external_exports.array(external_exports.string().min(1).max(300)).max(20).optional().describe("Additional tool permissions for this execution"),
+      executionMode: EXECUTION_MODE_SCHEMA.optional(),
       timeoutSeconds: external_exports.number().int().min(60).max(7200).optional().describe("Timeout in seconds (60-7200, default 1800)")
     },
     {
@@ -21900,12 +21923,19 @@ function createServer() {
     },
     async (params) => {
       try {
-        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } = await prepareExecution(params);
+        const {
+          resolvedDir,
+          allowedTools,
+          executionMode,
+          timeoutSeconds,
+          workspaceBefore
+        } = await prepareExecution(params);
         const started = await executionJobManager.startExecution({
           workingDirectory: resolvedDir,
           plan: params.plan,
           acceptanceCriteria: params.acceptanceCriteria ?? [],
           allowedTools,
+          executionMode,
           timeoutSeconds,
           workspaceBefore
         });
@@ -21946,6 +21976,7 @@ function createServer() {
       plan: external_exports.string().trim().min(1).max(1e5).describe("The implementation plan to execute"),
       acceptanceCriteria: external_exports.array(external_exports.string().trim().min(1)).max(50).optional().describe("Acceptance criteria for the plan"),
       extraAllowedTools: external_exports.array(external_exports.string().min(1).max(300)).max(20).optional().describe("Additional tool permissions for this execution"),
+      executionMode: EXECUTION_MODE_SCHEMA.optional(),
       timeoutSeconds: external_exports.number().int().min(60).max(7200).optional().describe("Timeout in seconds (60-7200, default 1800)")
     },
     {
@@ -21954,12 +21985,19 @@ function createServer() {
     },
     async (params) => {
       try {
-        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } = await prepareExecution(params);
+        const {
+          resolvedDir,
+          allowedTools,
+          executionMode,
+          timeoutSeconds,
+          workspaceBefore
+        } = await prepareExecution(params);
         const result = await executionJobManager.startExecution({
           workingDirectory: resolvedDir,
           plan: params.plan,
           acceptanceCriteria: params.acceptanceCriteria ?? [],
           allowedTools,
+          executionMode,
           timeoutSeconds,
           workspaceBefore
         });

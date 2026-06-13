@@ -114,6 +114,26 @@ describe("MCP Server Integration", () => {
     expect(data.workspaceAfter).toBeTruthy();
   });
 
+  it("execute_plan accepts claude_write_only mode and records it in the result", async () => {
+    const result = await client.callTool({
+      name: "execute_plan",
+      arguments: {
+        workingDirectory: "/tmp",
+        plan: "Test plan for write-only mode",
+        executionMode: "claude_write_only",
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+
+    const content = result.content as Array<{ type: string; text: string }>;
+    const data = JSON.parse(content[0].text);
+    expect(data.executionMode).toBe("claude_write_only");
+    expect(data.parsedOutput.prompt).toContain(
+      "Codex is acting as planner and reviewer only."
+    );
+  });
+
   it("rejects invalid tool inputs", async () => {
     const result = await client.callTool({
       name: "execute_plan",
@@ -172,6 +192,7 @@ describe("MCP Server async execution lifecycle", () => {
         arguments: {
           workingDirectory: "/tmp",
           plan: "Async plan",
+          executionMode: "claude_write_only",
         },
       });
 
@@ -204,7 +225,9 @@ describe("MCP Server async execution lifecycle", () => {
       }
 
       expect(finalData.status).toBe("completed");
+      expect(finalData.executionMode).toBe("claude_write_only");
       expect(finalData.result.status).toBe("completed");
+      expect(finalData.result.executionMode).toBe("claude_write_only");
       expect(finalData.result.parsedOutput.status).toBe("success");
     } finally {
       await client.close();

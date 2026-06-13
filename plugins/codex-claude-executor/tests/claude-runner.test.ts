@@ -140,6 +140,31 @@ describe("claude-runner", () => {
     );
   });
 
+  it("adds claude_write_only collaboration constraints to the prompt", async () => {
+    const result = await runClaude({
+      workingDirectory: tempDir,
+      plan: "Plan that should be executed by Claude only",
+      allowedTools: ["Read", "Write"],
+      timeoutSeconds: 30,
+      workspaceBefore: WORKSPACE_BEFORE,
+      executionMode: "claude_write_only",
+      claudeBin: FAKE_CLAUDE,
+      env: { FAKE_CLAUDE_MODE: "success" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.parsedOutput).toHaveProperty(
+      "prompt",
+      expect.stringContaining("Codex is acting as planner and reviewer only.")
+    );
+    expect(result.parsedOutput).toHaveProperty(
+      "prompt",
+      expect.stringContaining(
+        "Claude must perform every code change inside this execution."
+      )
+    );
+  });
+
   it("applies working directory", async () => {
     const result = await runClaude({
       workingDirectory: tempDir,

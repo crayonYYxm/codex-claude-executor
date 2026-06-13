@@ -19,8 +19,10 @@ This skill defines the workflow for planning implementation work, obtaining user
 1. Inspect the repository using Codex's own read-only capabilities.
 2. Produce a concrete implementation plan.
 3. Identify any Claude tool rules required beyond the fixed allowlist.
-4. Decide whether the task is short enough for synchronous execution or should run in the background.
-5. Do not call `execute_plan` or `start_execution` yet.
+4. Decide whether the task should use the default collaboration mode or `claude_write_only`.
+5. In `claude_write_only`, Codex stays in a planner/reviewer role and Claude performs all code changes inside the delegated run.
+6. Decide whether the task is short enough for synchronous execution or should run in the background.
+7. Do not call `execute_plan` or `start_execution` yet.
 
 ### Phase 3: Confirmation
 
@@ -33,17 +35,19 @@ This skill defines the workflow for planning implementation work, obtaining user
 
 1. For short tasks, call `execute_plan` exactly once for the confirmed plan.
 2. For long tasks, call `start_execution` once, then monitor with `get_execution_status` and `get_execution_logs`.
-3. Use `cancel_execution` when the user wants to stop a running delegation.
-4. Do not silently retry failures.
-5. Explain timeouts, execution failures, or environment errors.
+3. When the user wants Codex to avoid direct code edits, pass `executionMode: "claude_write_only"` in the delegated execution.
+4. Use `cancel_execution` when the user wants to stop a running delegation.
+5. Do not silently retry failures.
+6. Explain timeouts, execution failures, or environment errors.
 
 ### Phase 5: Review
 
 1. Independently inspect the actual workspace changes.
 2. Rerun relevant tests using Codex's own tools where permitted.
 3. Do not trust Claude's success claim without verification.
-4. Report changed files, verified test results, unresolved issues, and any difference from the approved plan.
-5. Never automatically revert user or Claude changes.
+4. In `claude_write_only`, if the review finds issues, prepare a follow-up plan for Claude instead of directly patching the code unless the user explicitly overrides that workflow.
+5. Report changed files, verified test results, unresolved issues, and any difference from the approved plan.
+6. Never automatically revert user or Claude changes.
 
 ## Examples
 

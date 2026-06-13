@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { startClaude, type RunClaudeOptions } from "./claude-runner.js";
 import { captureWorkspaceSnapshot } from "./workspace.js";
 import type {
+  ExecutionMode,
   ExecutePlanResult,
   ExecutionJobStatusResult,
   ExecutionLogResult,
@@ -22,6 +23,7 @@ type ExecutionJob = {
   status: JobStatus;
   workingDirectory: string;
   allowedTools: string[];
+  executionMode: ExecutionMode;
   timeoutSeconds: number;
   createdAt: string;
   startedAt: string;
@@ -54,6 +56,7 @@ function toStatusResult(job: ExecutionJob): ExecutionJobStatusResult {
     status: job.status,
     workingDirectory: job.workingDirectory,
     allowedTools: [...job.allowedTools],
+    executionMode: job.executionMode,
     timeoutSeconds: job.timeoutSeconds,
     createdAt: job.createdAt,
     startedAt: job.startedAt,
@@ -122,6 +125,7 @@ export class ExecutionJobManager {
       status: "running",
       workingDirectory: options.workingDirectory,
       allowedTools: [...options.allowedTools],
+      executionMode: options.executionMode ?? "standard",
       timeoutSeconds: options.timeoutSeconds,
       createdAt,
       startedAt,
@@ -173,6 +177,7 @@ export class ExecutionJobManager {
           jobId,
           workingDirectory: job.workingDirectory,
           allowedTools: [...job.allowedTools],
+          executionMode: job.executionMode,
           workspaceBefore: job.workspaceBefore,
           workspaceAfter: job.workspaceAfter,
         };
@@ -204,6 +209,7 @@ export class ExecutionJobManager {
           error: `Unexpected async execution failure: ${error instanceof Error ? error.message : String(error)}`,
           workingDirectory: job.workingDirectory,
           allowedTools: [...job.allowedTools],
+          executionMode: job.executionMode,
           workspaceBefore: job.workspaceBefore,
           workspaceAfter: job.workspaceAfter,
         };
@@ -217,6 +223,7 @@ export class ExecutionJobManager {
       status: job.status,
       workingDirectory: job.workingDirectory,
       allowedTools: [...job.allowedTools],
+      executionMode: job.executionMode,
       timeoutSeconds: job.timeoutSeconds,
       createdAt: job.createdAt,
       startedAt: job.startedAt,
@@ -244,6 +251,7 @@ export class ExecutionJobManager {
       jobId,
       workingDirectory: job.workingDirectory,
       allowedTools: [...job.allowedTools],
+      executionMode: job.executionMode,
       workspaceBefore: job.workspaceBefore,
       workspaceAfter:
         job.workspaceAfter ??

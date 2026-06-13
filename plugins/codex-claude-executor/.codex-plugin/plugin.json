@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Claude Executor",
     "shortDescription": "Codex plans, Claude Code executes",
-    "longDescription": "Plan implementation work in Codex, confirm permissions, delegate execution to local Claude Code, then review the resulting changes.",
+    "longDescription": "Plan implementation work in Codex, confirm permissions, delegate execution to local Claude Code, then review the resulting changes. Supports a claude_write_only mode when Codex should stay in a planner/reviewer role and Claude should perform all code edits.",
     "developerName": "xumeng",
     "category": "Productivity",
     "websiteURL": "https://github.com/crayonYYxm/codex-claude-executor",
@@ -30,7 +30,8 @@
     ],
     "defaultPrompt": [
       "Plan this task, then delegate the confirmed plan to Claude Code.",
-      "Have Claude Code execute this plan, then review the changes."
+      "Have Claude Code execute this plan, then review the changes.",
+      "Use claude_write_only when Codex should stay in a planner/reviewer role and Claude should make all code edits."
     ],
     "brandColor": "#D97757"
   }

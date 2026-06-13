@@ -13,6 +13,11 @@ This plugin enables a workflow where:
 5. **The MCP server** either returns structured execution results immediately or starts a background job for long-running work
 6. **Codex independently inspects** the resulting changes and reruns relevant tests
 
+### Collaboration Modes
+
+- `standard`: the default behavior. Codex plans, delegates, reviews, and may choose to patch issues itself outside delegated runs.
+- `claude_write_only`: Codex stays in a planner/reviewer role while Claude is expected to perform all code changes inside the delegated run. If review later finds issues, Codex should issue a follow-up plan instead of directly patching code unless the user explicitly overrides that workflow.
+
 ## Architecture
 
 ```
@@ -190,6 +195,21 @@ The plugin includes a fixed allowlist of safe tools:
 - `get_execution_status`: polls an async job until it reaches a terminal state
 - `get_execution_logs`: reads incremental `stdout` or `stderr` log slices from an async job
 - `cancel_execution`: requests cancellation of a running async job
+
+`execute_plan` and `start_execution` accept an optional `executionMode` field:
+
+- `standard`
+- `claude_write_only`
+
+Example:
+
+```json
+{
+  "workingDirectory": "/absolute/project/path",
+  "plan": "Implement the confirmed feature plan.",
+  "executionMode": "claude_write_only"
+}
+```
 
 ## Security Limitations
 

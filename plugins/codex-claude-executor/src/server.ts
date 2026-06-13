@@ -16,13 +16,20 @@ import { mergeAllowedTools, validateExtraAllowedTools } from "./permissions.js";
 import { ExecutionJobManager } from "./job-manager.js";
 import type {
   EnvironmentCheckResult,
+  ExecutionMode,
   ExecutePlanInput,
   ExecutePlanResult,
 } from "./types.js";
 
 const SERVER_NAME = "claude-executor";
 const SERVER_VERSION = "0.1.0";
-const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests.`;
+const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests. When you want Codex to stay in a planner/reviewer role while Claude performs all code edits, set executionMode to claude_write_only.`;
+const EXECUTION_MODE_SCHEMA = z
+  .enum(["standard", "claude_write_only"])
+  .default("standard")
+  .describe(
+    "Execution collaboration mode. Use claude_write_only when Codex should stay in a planner/reviewer role and Claude should perform all code changes inside the delegated run."
+  );
 
 const executionJobManager = new ExecutionJobManager();
 
@@ -74,11 +81,13 @@ export function createServer(): McpServer {
 
     const allowedTools = mergeAllowedTools(validatedExtraTools);
     const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
+    const executionMode: ExecutionMode = params.executionMode ?? "standard";
     const timeoutSeconds = params.timeoutSeconds ?? 1800;
 
     return {
       resolvedDir,
       allowedTools,
+      executionMode,
       timeoutSeconds,
       workspaceBefore,
     };
@@ -173,6 +182,7 @@ export function createServer(): McpServer {
         .max(20)
         .optional()
         .describe("Additional tool permissions for this execution"),
+      executionMode: EXECUTION_MODE_SCHEMA.optional(),
       timeoutSeconds: z
         .number()
         .int()
@@ -187,13 +197,20 @@ export function createServer(): McpServer {
     },
     async (params) => {
       try {
-        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } =
+        const {
+          resolvedDir,
+          allowedTools,
+          executionMode,
+          timeoutSeconds,
+          workspaceBefore,
+        } =
           await prepareExecution(params);
         const started = await executionJobManager.startExecution({
           workingDirectory: resolvedDir,
           plan: params.plan,
           acceptanceCriteria: params.acceptanceCriteria ?? [],
           allowedTools,
+          executionMode,
           timeoutSeconds,
           workspaceBefore,
         });
@@ -250,6 +267,7 @@ export function createServer(): McpServer {
         .max(20)
         .optional()
         .describe("Additional tool permissions for this execution"),
+      executionMode: EXECUTION_MODE_SCHEMA.optional(),
       timeoutSeconds: z
         .number()
         .int()
@@ -264,13 +282,20 @@ export function createServer(): McpServer {
     },
     async (params) => {
       try {
-        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } =
+        const {
+          resolvedDir,
+          allowedTools,
+          executionMode,
+          timeoutSeconds,
+          workspaceBefore,
+        } =
           await prepareExecution(params);
         const result = await executionJobManager.startExecution({
           workingDirectory: resolvedDir,
           plan: params.plan,
           acceptanceCriteria: params.acceptanceCriteria ?? [],
           allowedTools,
+          executionMode,
           timeoutSeconds,
           workspaceBefore,
         });

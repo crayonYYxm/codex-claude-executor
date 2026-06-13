@@ -5,6 +5,8 @@ export type ExecutionStatus =
   | "cancelled"
   | "environment_error";
 
+export type ExecutionMode = "standard" | "claude_write_only";
+
 export type JobStatus =
   | "running"
   | "cancelling"
@@ -42,6 +44,7 @@ export type ExecutePlanResult = ClaudeRunResult & {
   jobId?: string;
   workingDirectory: string;
   allowedTools: string[];
+  executionMode: ExecutionMode;
   workspaceBefore: WorkspaceSnapshot;
   workspaceAfter: WorkspaceSnapshot;
 };
@@ -61,6 +64,7 @@ export type ExecutePlanInput = {
   plan: string;
   acceptanceCriteria?: string[];
   extraAllowedTools?: string[];
+  executionMode?: ExecutionMode;
   timeoutSeconds?: number;
 };
 
@@ -69,6 +73,7 @@ export type StartExecutionResult = {
   status: JobStatus;
   workingDirectory: string;
   allowedTools: string[];
+  executionMode: ExecutionMode;
   timeoutSeconds: number;
   createdAt: string;
   startedAt: string;
@@ -79,6 +84,7 @@ export type ExecutionJobStatusResult = {
   status: JobStatus;
   workingDirectory: string;
   allowedTools: string[];
+  executionMode: ExecutionMode;
   timeoutSeconds: number;
   createdAt: string;
   startedAt: string;

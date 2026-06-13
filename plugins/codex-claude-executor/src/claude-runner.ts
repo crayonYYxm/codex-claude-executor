@@ -8,6 +8,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type {
   ClaudeRunResult,
+  ExecutionMode,
   ExecutionStatus,
   WorkspaceSnapshot,
 } from "./types.js";
@@ -20,6 +21,7 @@ export type RunClaudeOptions = {
   plan: string;
   acceptanceCriteria?: string[];
   allowedTools: string[];
+  executionMode?: ExecutionMode;
   timeoutSeconds: number;
   workspaceBefore: WorkspaceSnapshot;
   claudeBin?: string;
@@ -41,6 +43,7 @@ export type StartClaudeHooks = {
  * Build the execution prompt for Claude.
  */
 function buildPrompt(options: RunClaudeOptions): string {
+  const executionMode = options.executionMode ?? "standard";
   const sections: string[] = [
     "This is an already approved implementation plan.",
     "",
@@ -76,6 +79,17 @@ function buildPrompt(options: RunClaudeOptions): string {
     "- Test results",
     "- Unresolved issues"
   );
+
+  if (executionMode === "claude_write_only") {
+    sections.push(
+      "",
+      "## Collaboration Mode",
+      "- Codex is acting as planner and reviewer only.",
+      "- Claude must perform every code change inside this execution.",
+      "- Do not assume Codex will manually patch your output after this run.",
+      "- If the review later finds issues, expect a follow-up plan instead of a manual Codex fix."
+    );
+  }
 
   return sections.join("\n");
 }
