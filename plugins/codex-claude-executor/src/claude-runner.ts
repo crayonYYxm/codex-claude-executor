@@ -26,6 +26,17 @@ export type RunClaudeOptions = {
   env?: Record<string, string>;
 };
 
+export type RunningClaude = {
+  cancel: () => void;
+  completed: Promise<ClaudeRunResult>;
+  getPid: () => number | null;
+};
+
+export type StartClaudeHooks = {
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
+};
+
 /**
  * Build the execution prompt for Claude.
  */
@@ -75,9 +86,10 @@ function buildPrompt(options: RunClaudeOptions): string {
  * Uses spawn without shell, sends prompt via stdin,
  * captures stdout/stderr with size limits.
  */
-export async function runClaude(
-  options: RunClaudeOptions
-): Promise<ClaudeRunResult> {
+export function startClaude(
+  options: RunClaudeOptions,
+  hooks: StartClaudeHooks = {}
+): RunningClaude {
   const claudeBin = options.claudeBin ?? process.env.CLAUDE_BIN ?? "claude";
   const startTime = Date.now();
 
@@ -100,8 +112,11 @@ export async function runClaude(
   // Build prompt
   const prompt = buildPrompt(options);
 
-  return new Promise<ClaudeRunResult>((resolve) => {
-    let process_ref: ChildProcess | null = null;
+  let process_ref: ChildProcess | null = null;
+  let processClosed = false;
+  let stopReason: "timeout" | "cancelled" | null = null;
+
+  const completed = new Promise<ClaudeRunResult>((resolve) => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let sigtermTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let stdout = "";
@@ -109,8 +124,6 @@ export async function runClaude(
     let stdoutTruncated = false;
     let stderrTruncated = false;
     let resolved = false;
-    let timedOut = false; // Track if timeout was triggered
-    let processClosed = false;
 
     const cleanup = () => {
       if (timeoutId) {
@@ -177,8 +190,10 @@ export async function runClaude(
 
     // Capture stdout with size limit
     process_ref.stdout?.on("data", (data: Buffer) => {
+      const chunk = data.toString();
+      hooks.onStdout?.(chunk);
       if (stdout.length < MAX_OUTPUT_SIZE) {
-        stdout += data.toString();
+        stdout += chunk;
         if (stdout.length > MAX_OUTPUT_SIZE) {
           stdout = stdout.slice(0, MAX_OUTPUT_SIZE);
           stdoutTruncated = true;
@@ -190,8 +205,10 @@ export async function runClaude(
 
     // Capture stderr with size limit
     process_ref.stderr?.on("data", (data: Buffer) => {
+      const chunk = data.toString();
+      hooks.onStderr?.(chunk);
       if (stderr.length < MAX_OUTPUT_SIZE) {
-        stderr += data.toString();
+        stderr += chunk;
         if (stderr.length > MAX_OUTPUT_SIZE) {
           stderr = stderr.slice(0, MAX_OUTPUT_SIZE);
           stderrTruncated = true;
@@ -203,7 +220,7 @@ export async function runClaude(
 
     // Set timeout
     timeoutId = setTimeout(() => {
-      timedOut = true;
+      stopReason = "timeout";
 
       // Send SIGTERM
       signalProcess("SIGTERM");
@@ -223,7 +240,7 @@ export async function runClaude(
       const durationMs = Date.now() - startTime;
 
       // If timeout was triggered, report timed_out regardless of exit code
-      if (timedOut) {
+      if (stopReason === "timeout") {
         resolveOnce({
           status: "timed_out",
           exitCode: code,
@@ -235,6 +252,22 @@ export async function runClaude(
           stderrTruncated,
           parsedOutput: null,
           error: `Execution timed out after ${options.timeoutSeconds} seconds`,
+        });
+        return;
+      }
+
+      if (stopReason === "cancelled") {
+        resolveOnce({
+          status: "cancelled",
+          exitCode: code,
+          signal: signal as NodeJS.Signals | null,
+          durationMs,
+          stdout,
+          stderr,
+          stdoutTruncated,
+          stderrTruncated,
+          parsedOutput: null,
+          error: "Execution was cancelled",
         });
         return;
       }
@@ -300,4 +333,46 @@ export async function runClaude(
       });
     });
   });
+
+  return {
+    cancel: () => {
+      if (processClosed || stopReason === "timeout" || stopReason === "cancelled") {
+        return;
+      }
+      stopReason = "cancelled";
+      if (!process_ref?.pid) {
+        return;
+      }
+      if (process.platform !== "win32") {
+        try {
+          process.kill(-process_ref.pid, "SIGTERM");
+        } catch {
+          process_ref.kill("SIGTERM");
+        }
+      } else {
+        process_ref.kill("SIGTERM");
+      }
+      setTimeout(() => {
+        if (!processClosed) {
+          if (process.platform !== "win32") {
+            try {
+              process.kill(-process_ref!.pid!, "SIGKILL");
+            } catch {
+              process_ref?.kill("SIGKILL");
+            }
+          } else {
+            process_ref?.kill("SIGKILL");
+          }
+        }
+      }, SIGTERM_WAIT_MS);
+    },
+    completed,
+    getPid: () => process_ref?.pid ?? null,
+  };
+}
+
+export async function runClaude(
+  options: RunClaudeOptions
+): Promise<ClaudeRunResult> {
+  return startClaude(options).completed;
 }

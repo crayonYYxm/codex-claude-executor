@@ -13,12 +13,18 @@ import {
   captureWorkspaceSnapshot,
 } from "./workspace.js";
 import { mergeAllowedTools, validateExtraAllowedTools } from "./permissions.js";
-import { runClaude } from "./claude-runner.js";
-import type { EnvironmentCheckResult, ExecutePlanResult } from "./types.js";
+import { ExecutionJobManager } from "./job-manager.js";
+import type {
+  EnvironmentCheckResult,
+  ExecutePlanInput,
+  ExecutePlanResult,
+} from "./types.js";
 
 const SERVER_NAME = "claude-executor";
 const SERVER_VERSION = "0.1.0";
-const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Only call execute_plan after the user has confirmed the implementation plan and every extra allowed tool. After execution, independently inspect the workspace changes and rerun relevant tests.`;
+const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests.`;
+
+const executionJobManager = new ExecutionJobManager();
 
 /**
  * Execute a command with timeout, returning stdout.
@@ -58,8 +64,25 @@ export function createServer(): McpServer {
     }
   );
 
-  // Execution lock - only one execute_plan at a time
-  let executionLock = false;
+  async function prepareExecution(params: ExecutePlanInput) {
+    const resolvedDir = await resolveWorkingDirectory(params.workingDirectory);
+
+    let validatedExtraTools: string[] = [];
+    if (params.extraAllowedTools && params.extraAllowedTools.length > 0) {
+      validatedExtraTools = validateExtraAllowedTools(params.extraAllowedTools);
+    }
+
+    const allowedTools = mergeAllowedTools(validatedExtraTools);
+    const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
+    const timeoutSeconds = params.timeoutSeconds ?? 1800;
+
+    return {
+      resolvedDir,
+      allowedTools,
+      timeoutSeconds,
+      workspaceBefore,
+    };
+  }
 
   // Register check_environment tool
   server.tool(
@@ -163,77 +186,10 @@ export function createServer(): McpServer {
       idempotentHint: false,
     },
     async (params) => {
-      // Check execution lock
-      if (executionLock) {
-        const errorResult = {
-          error: "Another execute_plan call is already running. Only one execution is allowed at a time.",
-        };
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(errorResult),
-            },
-          ],
-        };
-      }
-
-      // Acquire lock
-      executionLock = true;
-
       try {
-        // Validate and resolve working directory
-        let resolvedDir: string;
-        try {
-          resolvedDir = await resolveWorkingDirectory(params.workingDirectory);
-        } catch (error) {
-          const errorResult = {
-            error: `Invalid working directory: ${error instanceof Error ? error.message : String(error)}`,
-          };
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(errorResult),
-              },
-            ],
-          };
-        }
-
-        // Validate extra tools
-        let validatedExtraTools: string[] = [];
-        if (params.extraAllowedTools && params.extraAllowedTools.length > 0) {
-          try {
-            validatedExtraTools = validateExtraAllowedTools(
-              params.extraAllowedTools
-            );
-          } catch (error) {
-            const errorResult = {
-              error: `Invalid extra tools: ${error instanceof Error ? error.message : String(error)}`,
-            };
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify(errorResult),
-                },
-              ],
-            };
-          }
-        }
-
-        // Merge allowed tools
-        const allowedTools = mergeAllowedTools(validatedExtraTools);
-
-        // Capture pre-execution workspace snapshot
-        const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
-
-        // Run Claude
-        const timeoutSeconds = params.timeoutSeconds ?? 1800;
-        const runResult = await runClaude({
+        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } =
+          await prepareExecution(params);
+        const started = await executionJobManager.startExecution({
           workingDirectory: resolvedDir,
           plan: params.plan,
           acceptanceCriteria: params.acceptanceCriteria ?? [],
@@ -241,18 +197,9 @@ export function createServer(): McpServer {
           timeoutSeconds,
           workspaceBefore,
         });
-
-        // Capture post-execution workspace snapshot
-        const workspaceAfter = await captureWorkspaceSnapshot(resolvedDir);
-
-        // Build result
-        const result: ExecutePlanResult = {
-          ...runResult,
-          workingDirectory: resolvedDir,
-          allowedTools,
-          workspaceBefore,
-          workspaceAfter,
-        };
+        const result: ExecutePlanResult = await executionJobManager.waitForResult(
+          started.jobId
+        );
 
         const isError = result.status !== "completed";
 
@@ -278,9 +225,216 @@ export function createServer(): McpServer {
             },
           ],
         };
-      } finally {
-        // Always release the lock
-        executionLock = false;
+      }
+    }
+  );
+
+  server.tool(
+    "start_execution",
+    "Start an already confirmed implementation plan in the background for long-running Claude Code work.",
+    {
+      workingDirectory: z.string().describe("Absolute path to the working directory"),
+      plan: z
+        .string()
+        .trim()
+        .min(1)
+        .max(100000)
+        .describe("The implementation plan to execute"),
+      acceptanceCriteria: z
+        .array(z.string().trim().min(1))
+        .max(50)
+        .optional()
+        .describe("Acceptance criteria for the plan"),
+      extraAllowedTools: z
+        .array(z.string().min(1).max(300))
+        .max(20)
+        .optional()
+        .describe("Additional tool permissions for this execution"),
+      timeoutSeconds: z
+        .number()
+        .int()
+        .min(60)
+        .max(7200)
+        .optional()
+        .describe("Timeout in seconds (60-7200, default 1800)"),
+    },
+    {
+      destructiveHint: true,
+      idempotentHint: false,
+    },
+    async (params) => {
+      try {
+        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } =
+          await prepareExecution(params);
+        const result = await executionJobManager.startExecution({
+          workingDirectory: resolvedDir,
+          plan: params.plan,
+          acceptanceCriteria: params.acceptanceCriteria ?? [],
+          allowedTools,
+          timeoutSeconds,
+          workspaceBefore,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "get_execution_status",
+    "Get the current state of a background Claude execution job.",
+    {
+      jobId: z.string().uuid().describe("The job identifier returned by start_execution"),
+    },
+    async ({ jobId }) => {
+      try {
+        const result = executionJobManager.getExecutionStatus(jobId);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "get_execution_logs",
+    "Read incremental stdout or stderr logs for a background Claude execution job.",
+    {
+      jobId: z.string().uuid().describe("The job identifier returned by start_execution"),
+      stream: z
+        .enum(["stdout", "stderr"])
+        .default("stderr")
+        .describe("Which log stream to read"),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .default(0)
+        .describe("Character offset to start reading from"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(65536)
+        .default(65536)
+        .describe("Maximum number of characters to return"),
+    },
+    async ({ jobId, stream, offset, limit }) => {
+      try {
+        const result = await executionJobManager.getExecutionLogs(
+          jobId,
+          stream,
+          offset,
+          limit
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "cancel_execution",
+    "Cancel a running background Claude execution job.",
+    {
+      jobId: z.string().uuid().describe("The job identifier returned by start_execution"),
+    },
+    {
+      destructiveHint: true,
+      idempotentHint: false,
+    },
+    async ({ jobId }) => {
+      try {
+        const result = await executionJobManager.cancelExecution(jobId);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
       }
     }
   );

@@ -9,6 +9,26 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 const FAKE_CLAUDE = path.join(__dirname, "fixtures", "fake-claude.mjs");
 const MCP_SERVER = path.join(PROJECT_ROOT, "dist", "mcp-server.mjs");
 
+async function createClient(mode: string) {
+  const transport = new StdioClientTransport({
+    command: "node",
+    args: [MCP_SERVER],
+    env: {
+      ...process.env,
+      CLAUDE_BIN: FAKE_CLAUDE,
+      FAKE_CLAUDE_MODE: mode,
+    },
+  });
+
+  const client = new Client({
+    name: `test-client-${mode}`,
+    version: "1.0.0",
+  });
+
+  await client.connect(transport);
+  return { client, transport };
+}
+
 describe("MCP Server Integration", () => {
   let transport: StdioClientTransport;
   let client: Client;
@@ -38,10 +58,17 @@ describe("MCP Server Integration", () => {
     await client?.close();
   });
 
-  it("lists exactly two tools", async () => {
+  it("lists sync and async execution tools", async () => {
     const { tools } = await client.listTools();
     const toolNames = tools.map((t) => t.name).sort();
-    expect(toolNames).toEqual(["check_environment", "execute_plan"]);
+    expect(toolNames).toEqual([
+      "cancel_execution",
+      "check_environment",
+      "execute_plan",
+      "get_execution_logs",
+      "get_execution_status",
+      "start_execution",
+    ]);
   });
 
   it("check_environment returns ready with fake successful auth", async () => {
@@ -133,5 +160,130 @@ describe("MCP Server Integration", () => {
     });
 
     expect(result2.isError).toBeFalsy();
+  });
+});
+
+describe("MCP Server async execution lifecycle", () => {
+  it("starts a job, exposes status, and completes with a stored result", async () => {
+    const { client } = await createClient("slow-success");
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Async plan",
+        },
+      });
+
+      expect(startResult.isError).toBeFalsy();
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+      expect(startData.status).toBe("running");
+      expect(startData.jobId).toBeTruthy();
+
+      const runningStatus = await client.callTool({
+        name: "get_execution_status",
+        arguments: { jobId: startData.jobId },
+      });
+      const runningData = JSON.parse(
+        (runningStatus.content as Array<{ type: string; text: string }>)[0].text
+      );
+      expect(["running", "completed"]).toContain(runningData.status);
+
+      let finalData = runningData;
+      for (let i = 0; i < 10 && finalData.status === "running"; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const pollResult = await client.callTool({
+          name: "get_execution_status",
+          arguments: { jobId: startData.jobId },
+        });
+        finalData = JSON.parse(
+          (pollResult.content as Array<{ type: string; text: string }>)[0].text
+        );
+      }
+
+      expect(finalData.status).toBe("completed");
+      expect(finalData.result.status).toBe("completed");
+      expect(finalData.result.parsedOutput.status).toBe("success");
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("returns incremental stderr logs for a running job", async () => {
+    const { client } = await createClient("slow-success");
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Async plan",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const logsResult = await client.callTool({
+        name: "get_execution_logs",
+        arguments: {
+          jobId: startData.jobId,
+          stream: "stderr",
+          offset: 0,
+        },
+      });
+      const logsData = JSON.parse(
+        (logsResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+      expect(logsData.text).toContain("starting execution");
+      expect(logsData.nextOffset).toBeGreaterThan(0);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("cancels a running job and reports cancelled status", async () => {
+    const { client } = await createClient("slow-success");
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Async plan",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      const cancelResult = await client.callTool({
+        name: "cancel_execution",
+        arguments: { jobId: startData.jobId },
+      });
+      expect(cancelResult.isError).toBeFalsy();
+
+      let finalData: any = null;
+      for (let i = 0; i < 10; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const pollResult = await client.callTool({
+          name: "get_execution_status",
+          arguments: { jobId: startData.jobId },
+        });
+        finalData = JSON.parse(
+          (pollResult.content as Array<{ type: string; text: string }>)[0].text
+        );
+        if (finalData.status !== "running" && finalData.status !== "cancelling") {
+          break;
+        }
+      }
+
+      expect(finalData.status).toBe("cancelled");
+      expect(finalData.result.status).toBe("cancelled");
+    } finally {
+      await client.close();
+    }
   });
 });

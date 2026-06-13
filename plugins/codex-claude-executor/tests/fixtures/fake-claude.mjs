@@ -8,6 +8,7 @@
  * - FAKE_CLAUDE_MODE=failure
  * - FAKE_CLAUDE_MODE=invalid-json
  * - FAKE_CLAUDE_MODE=timeout
+ * - FAKE_CLAUDE_MODE=slow-success
  * - FAKE_CLAUDE_MODE=large-output
  * - FAKE_CLAUDE_MODE=auth-success
  * - FAKE_CLAUDE_MODE=auth-failure
@@ -39,7 +40,7 @@ if (
     process.exit(0);
   }
   // Default auth behavior based on mode
-  if (mode === "success" || mode === "large-output") {
+  if (mode === "success" || mode === "large-output" || mode === "slow-success") {
     console.log(JSON.stringify({ loggedIn: true, authMethod: "api-key" }));
   } else {
     console.log(JSON.stringify({ loggedIn: false, authMethod: null }));
@@ -95,6 +96,32 @@ switch (mode) {
       clearInterval(interval);
       process.exit(1);
     });
+    break;
+  }
+
+  case "slow-success": {
+    let cancelled = false;
+    process.on("SIGTERM", () => {
+      cancelled = true;
+      process.stderr.write("received SIGTERM\n");
+      process.exit(0);
+    });
+
+    process.stderr.write("starting execution\n");
+    setTimeout(() => {
+      if (cancelled) return;
+      process.stderr.write("still running\n");
+    }, 150);
+    setTimeout(() => {
+      if (cancelled) return;
+      const result = {
+        status: "success",
+        message: "Slow plan executed successfully",
+        prompt,
+      };
+      process.stdout.write(JSON.stringify(result));
+      process.exit(0);
+    }, 350);
     break;
   }
 

@@ -3224,8 +3224,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path3) {
+      let input = path3;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3477,8 +3477,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path3, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6871,12 +6871,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs2, exportName) {
+    function addFormats(ajv, list, fs3, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv.addFormat(f, fs3[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7083,10 +7083,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path3) {
+  if (!path3)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path3.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7406,11 +7406,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path3, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path3);
     return iss;
   });
 }
@@ -13486,8 +13486,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path3, errorMaps, issueData } = params;
+  const fullPath = [...path3, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -13603,11 +13603,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path3, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path3;
     this._key = key;
   }
   get path() {
@@ -21268,6 +21268,13 @@ function mergeAllowedTools(extraTools) {
   return [...FIXED_ALLOWED_TOOLS, ...uniqueExtras];
 }
 
+// src/job-manager.ts
+import * as fs2 from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import * as os from "node:os";
+import * as path2 from "node:path";
+import { randomUUID } from "node:crypto";
+
 // src/claude-runner.ts
 import { spawn } from "node:child_process";
 var MAX_OUTPUT_SIZE = 2 * 1024 * 1024;
@@ -21308,7 +21315,7 @@ function buildPrompt(options) {
   );
   return sections.join("\n");
 }
-async function runClaude(options) {
+function startClaude(options, hooks = {}) {
   const claudeBin = options.claudeBin ?? process.env.CLAUDE_BIN ?? "claude";
   const startTime = Date.now();
   const args = [
@@ -21324,8 +21331,10 @@ async function runClaude(options) {
   ];
   const env = { ...process.env, ...options.env };
   const prompt = buildPrompt(options);
-  return new Promise((resolve) => {
-    let process_ref = null;
+  let process_ref = null;
+  let processClosed = false;
+  let stopReason = null;
+  const completed = new Promise((resolve) => {
     let timeoutId = null;
     let sigtermTimeoutId = null;
     let stdout = "";
@@ -21333,8 +21342,6 @@ async function runClaude(options) {
     let stdoutTruncated = false;
     let stderrTruncated = false;
     let resolved = false;
-    let timedOut = false;
-    let processClosed = false;
     const cleanup = () => {
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -21389,8 +21396,10 @@ async function runClaude(options) {
     process_ref.stdin?.write(prompt);
     process_ref.stdin?.end();
     process_ref.stdout?.on("data", (data) => {
+      const chunk = data.toString();
+      hooks.onStdout?.(chunk);
       if (stdout.length < MAX_OUTPUT_SIZE) {
-        stdout += data.toString();
+        stdout += chunk;
         if (stdout.length > MAX_OUTPUT_SIZE) {
           stdout = stdout.slice(0, MAX_OUTPUT_SIZE);
           stdoutTruncated = true;
@@ -21400,8 +21409,10 @@ async function runClaude(options) {
       }
     });
     process_ref.stderr?.on("data", (data) => {
+      const chunk = data.toString();
+      hooks.onStderr?.(chunk);
       if (stderr.length < MAX_OUTPUT_SIZE) {
-        stderr += data.toString();
+        stderr += chunk;
         if (stderr.length > MAX_OUTPUT_SIZE) {
           stderr = stderr.slice(0, MAX_OUTPUT_SIZE);
           stderrTruncated = true;
@@ -21411,7 +21422,7 @@ async function runClaude(options) {
       }
     });
     timeoutId = setTimeout(() => {
-      timedOut = true;
+      stopReason = "timeout";
       signalProcess("SIGTERM");
       sigtermTimeoutId = setTimeout(() => {
         signalProcess("SIGKILL");
@@ -21422,7 +21433,7 @@ async function runClaude(options) {
       if (resolved) return;
       cleanup();
       const durationMs = Date.now() - startTime;
-      if (timedOut) {
+      if (stopReason === "timeout") {
         resolveOnce({
           status: "timed_out",
           exitCode: code,
@@ -21434,6 +21445,21 @@ async function runClaude(options) {
           stderrTruncated,
           parsedOutput: null,
           error: `Execution timed out after ${options.timeoutSeconds} seconds`
+        });
+        return;
+      }
+      if (stopReason === "cancelled") {
+        resolveOnce({
+          status: "cancelled",
+          exitCode: code,
+          signal,
+          durationMs,
+          stdout,
+          stderr,
+          stdoutTruncated,
+          stderrTruncated,
+          parsedOutput: null,
+          error: "Execution was cancelled"
         });
         return;
       }
@@ -21488,12 +21514,275 @@ async function runClaude(options) {
       });
     });
   });
+  return {
+    cancel: () => {
+      if (processClosed || stopReason === "timeout" || stopReason === "cancelled") {
+        return;
+      }
+      stopReason = "cancelled";
+      if (!process_ref?.pid) {
+        return;
+      }
+      if (process.platform !== "win32") {
+        try {
+          process.kill(-process_ref.pid, "SIGTERM");
+        } catch {
+          process_ref.kill("SIGTERM");
+        }
+      } else {
+        process_ref.kill("SIGTERM");
+      }
+      setTimeout(() => {
+        if (!processClosed) {
+          if (process.platform !== "win32") {
+            try {
+              process.kill(-process_ref.pid, "SIGKILL");
+            } catch {
+              process_ref?.kill("SIGKILL");
+            }
+          } else {
+            process_ref?.kill("SIGKILL");
+          }
+        }
+      }, SIGTERM_WAIT_MS);
+    },
+    completed,
+    getPid: () => process_ref?.pid ?? null
+  };
 }
+
+// src/job-manager.ts
+async function ensureDirectory(directory) {
+  await fs2.mkdir(directory, { recursive: true });
+}
+function toStatusResult(job) {
+  return {
+    jobId: job.id,
+    status: job.status,
+    workingDirectory: job.workingDirectory,
+    allowedTools: [...job.allowedTools],
+    timeoutSeconds: job.timeoutSeconds,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
+    workspaceBefore: job.workspaceBefore,
+    workspaceAfter: job.workspaceAfter,
+    result: job.result,
+    currentPid: job.currentPid
+  };
+}
+var ExecutionJobManager = class {
+  jobs = /* @__PURE__ */ new Map();
+  rootDirectory;
+  constructor(rootDirectory) {
+    this.rootDirectory = rootDirectory ?? path2.join(os.tmpdir(), "codex-claude-executor-jobs");
+  }
+  async persistStatus(job) {
+    await fs2.writeFile(
+      job.statusPath,
+      JSON.stringify(toStatusResult(job), null, 2),
+      "utf-8"
+    );
+  }
+  getActiveJob() {
+    for (const job of this.jobs.values()) {
+      if (job.status === "running" || job.status === "cancelling") {
+        return job;
+      }
+    }
+    return void 0;
+  }
+  async startExecution(options) {
+    const activeJob = this.getActiveJob();
+    if (activeJob) {
+      throw new Error(
+        `Another execution is already active (${activeJob.id}). Wait for it to finish or cancel it first.`
+      );
+    }
+    const jobId = randomUUID();
+    const createdAt = (/* @__PURE__ */ new Date()).toISOString();
+    const startedAt = createdAt;
+    const jobDirectory = path2.join(this.rootDirectory, jobId);
+    await ensureDirectory(jobDirectory);
+    const stdoutPath = path2.join(jobDirectory, "stdout.log");
+    const stderrPath = path2.join(jobDirectory, "stderr.log");
+    const statusPath = path2.join(jobDirectory, "status.json");
+    const resultPath = path2.join(jobDirectory, "result.json");
+    await fs2.writeFile(stdoutPath, "", "utf-8");
+    await fs2.writeFile(stderrPath, "", "utf-8");
+    const stdoutStream = createWriteStream(stdoutPath, { flags: "a" });
+    const stderrStream = createWriteStream(stderrPath, { flags: "a" });
+    const job = {
+      id: jobId,
+      status: "running",
+      workingDirectory: options.workingDirectory,
+      allowedTools: [...options.allowedTools],
+      timeoutSeconds: options.timeoutSeconds,
+      createdAt,
+      startedAt,
+      finishedAt: null,
+      workspaceBefore: options.workspaceBefore,
+      workspaceAfter: null,
+      result: null,
+      currentPid: null,
+      stdoutPath,
+      stderrPath,
+      statusPath,
+      resultPath,
+      stdoutStream,
+      stderrStream,
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      stdoutText: "",
+      stderrText: "",
+      runner: null,
+      completionPromise: Promise.resolve()
+    };
+    const runner = startClaude(options, {
+      onStdout: (chunk) => {
+        job.stdoutBytes += Buffer.byteLength(chunk);
+        job.stdoutText += chunk;
+        job.stdoutStream.write(chunk);
+      },
+      onStderr: (chunk) => {
+        job.stderrBytes += Buffer.byteLength(chunk);
+        job.stderrText += chunk;
+        job.stderrStream.write(chunk);
+      }
+    });
+    job.runner = runner;
+    job.currentPid = runner.getPid();
+    this.jobs.set(jobId, job);
+    await this.persistStatus(job);
+    job.completionPromise = runner.completed.then(async (runResult) => {
+      job.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+      job.currentPid = null;
+      job.workspaceAfter = await captureWorkspaceSnapshot(job.workingDirectory);
+      job.status = runResult.status;
+      job.result = {
+        ...runResult,
+        jobId,
+        workingDirectory: job.workingDirectory,
+        allowedTools: [...job.allowedTools],
+        workspaceBefore: job.workspaceBefore,
+        workspaceAfter: job.workspaceAfter
+      };
+      await fs2.writeFile(
+        job.resultPath,
+        JSON.stringify(job.result, null, 2),
+        "utf-8"
+      );
+      await new Promise((resolve) => job.stdoutStream.end(resolve));
+      await new Promise((resolve) => job.stderrStream.end(resolve));
+      await this.persistStatus(job);
+    }).catch(async (error2) => {
+      job.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+      job.currentPid = null;
+      job.workspaceAfter = await captureWorkspaceSnapshot(job.workingDirectory);
+      job.status = "failed";
+      job.result = {
+        jobId,
+        status: "failed",
+        exitCode: null,
+        signal: null,
+        durationMs: 0,
+        stdout: "",
+        stderr: "",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        parsedOutput: null,
+        error: `Unexpected async execution failure: ${error2 instanceof Error ? error2.message : String(error2)}`,
+        workingDirectory: job.workingDirectory,
+        allowedTools: [...job.allowedTools],
+        workspaceBefore: job.workspaceBefore,
+        workspaceAfter: job.workspaceAfter
+      };
+      await new Promise((resolve) => job.stdoutStream.end(resolve));
+      await new Promise((resolve) => job.stderrStream.end(resolve));
+      await this.persistStatus(job);
+    });
+    return {
+      jobId,
+      status: job.status,
+      workingDirectory: job.workingDirectory,
+      allowedTools: [...job.allowedTools],
+      timeoutSeconds: job.timeoutSeconds,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt
+    };
+  }
+  async waitForResult(jobId) {
+    const job = this.jobs.get(jobId);
+    if (!job) {
+      throw new Error(`Unknown job: ${jobId}`);
+    }
+    if (job.result) {
+      return job.result;
+    }
+    if (!job.runner) {
+      throw new Error(`Job ${jobId} has no active runner`);
+    }
+    await job.completionPromise;
+    if (job.result) {
+      return job.result;
+    }
+    const runResult = await job.runner.completed;
+    return {
+      ...runResult,
+      jobId,
+      workingDirectory: job.workingDirectory,
+      allowedTools: [...job.allowedTools],
+      workspaceBefore: job.workspaceBefore,
+      workspaceAfter: job.workspaceAfter ?? {
+        kind: "non_git",
+        note: "Workspace snapshot not available."
+      }
+    };
+  }
+  getExecutionStatus(jobId) {
+    const job = this.jobs.get(jobId);
+    if (!job) {
+      throw new Error(`Unknown job: ${jobId}`);
+    }
+    return toStatusResult(job);
+  }
+  async getExecutionLogs(jobId, stream, offset, limit) {
+    const job = this.jobs.get(jobId);
+    if (!job) {
+      throw new Error(`Unknown job: ${jobId}`);
+    }
+    const fileContent = stream === "stdout" ? job.stdoutText : job.stderrText;
+    const nextOffset = Math.min(offset + limit, fileContent.length);
+    const text = fileContent.slice(offset, nextOffset);
+    return {
+      jobId,
+      status: job.status,
+      stream,
+      offset,
+      nextOffset,
+      eof: nextOffset >= fileContent.length,
+      text
+    };
+  }
+  async cancelExecution(jobId) {
+    const job = this.jobs.get(jobId);
+    if (!job) {
+      throw new Error(`Unknown job: ${jobId}`);
+    }
+    if (job.status === "running") {
+      job.status = "cancelling";
+      await this.persistStatus(job);
+      job.runner?.cancel();
+    }
+    return toStatusResult(job);
+  }
+};
 
 // src/server.ts
 var SERVER_NAME = "claude-executor";
 var SERVER_VERSION = "0.1.0";
-var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Only call execute_plan after the user has confirmed the implementation plan and every extra allowed tool. After execution, independently inspect the workspace changes and rerun relevant tests.`;
+var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. For short tasks, execute_plan can run synchronously after the user has confirmed the implementation plan and every extra allowed tool. For long tasks, prefer start_execution, then poll with get_execution_status and get_execution_logs, and cancel with cancel_execution when needed. After execution, independently inspect the workspace changes and rerun relevant tests.`;
+var executionJobManager = new ExecutionJobManager();
 function execCommand2(command, args, timeoutMs = 15e3) {
   return new Promise((resolve, reject) => {
     execFile2(
@@ -21520,7 +21809,22 @@ function createServer() {
       instructions: SERVER_INSTRUCTIONS
     }
   );
-  let executionLock = false;
+  async function prepareExecution(params) {
+    const resolvedDir = await resolveWorkingDirectory(params.workingDirectory);
+    let validatedExtraTools = [];
+    if (params.extraAllowedTools && params.extraAllowedTools.length > 0) {
+      validatedExtraTools = validateExtraAllowedTools(params.extraAllowedTools);
+    }
+    const allowedTools = mergeAllowedTools(validatedExtraTools);
+    const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
+    const timeoutSeconds = params.timeoutSeconds ?? 1800;
+    return {
+      resolvedDir,
+      allowedTools,
+      timeoutSeconds,
+      workspaceBefore
+    };
+  }
   server.tool(
     "check_environment",
     "Check whether the local machine can execute Claude Code before attempting a plan.",
@@ -21595,64 +21899,9 @@ function createServer() {
       idempotentHint: false
     },
     async (params) => {
-      if (executionLock) {
-        const errorResult = {
-          error: "Another execute_plan call is already running. Only one execution is allowed at a time."
-        };
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(errorResult)
-            }
-          ]
-        };
-      }
-      executionLock = true;
       try {
-        let resolvedDir;
-        try {
-          resolvedDir = await resolveWorkingDirectory(params.workingDirectory);
-        } catch (error2) {
-          const errorResult = {
-            error: `Invalid working directory: ${error2 instanceof Error ? error2.message : String(error2)}`
-          };
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(errorResult)
-              }
-            ]
-          };
-        }
-        let validatedExtraTools = [];
-        if (params.extraAllowedTools && params.extraAllowedTools.length > 0) {
-          try {
-            validatedExtraTools = validateExtraAllowedTools(
-              params.extraAllowedTools
-            );
-          } catch (error2) {
-            const errorResult = {
-              error: `Invalid extra tools: ${error2 instanceof Error ? error2.message : String(error2)}`
-            };
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify(errorResult)
-                }
-              ]
-            };
-          }
-        }
-        const allowedTools = mergeAllowedTools(validatedExtraTools);
-        const workspaceBefore = await captureWorkspaceSnapshot(resolvedDir);
-        const timeoutSeconds = params.timeoutSeconds ?? 1800;
-        const runResult = await runClaude({
+        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } = await prepareExecution(params);
+        const started = await executionJobManager.startExecution({
           workingDirectory: resolvedDir,
           plan: params.plan,
           acceptanceCriteria: params.acceptanceCriteria ?? [],
@@ -21660,14 +21909,9 @@ function createServer() {
           timeoutSeconds,
           workspaceBefore
         });
-        const workspaceAfter = await captureWorkspaceSnapshot(resolvedDir);
-        const result = {
-          ...runResult,
-          workingDirectory: resolvedDir,
-          allowedTools,
-          workspaceBefore,
-          workspaceAfter
-        };
+        const result = await executionJobManager.waitForResult(
+          started.jobId
+        );
         const isError = result.status !== "completed";
         return {
           isError,
@@ -21691,8 +21935,178 @@ function createServer() {
             }
           ]
         };
-      } finally {
-        executionLock = false;
+      }
+    }
+  );
+  server.tool(
+    "start_execution",
+    "Start an already confirmed implementation plan in the background for long-running Claude Code work.",
+    {
+      workingDirectory: external_exports.string().describe("Absolute path to the working directory"),
+      plan: external_exports.string().trim().min(1).max(1e5).describe("The implementation plan to execute"),
+      acceptanceCriteria: external_exports.array(external_exports.string().trim().min(1)).max(50).optional().describe("Acceptance criteria for the plan"),
+      extraAllowedTools: external_exports.array(external_exports.string().min(1).max(300)).max(20).optional().describe("Additional tool permissions for this execution"),
+      timeoutSeconds: external_exports.number().int().min(60).max(7200).optional().describe("Timeout in seconds (60-7200, default 1800)")
+    },
+    {
+      destructiveHint: true,
+      idempotentHint: false
+    },
+    async (params) => {
+      try {
+        const { resolvedDir, allowedTools, timeoutSeconds, workspaceBefore } = await prepareExecution(params);
+        const result = await executionJobManager.startExecution({
+          workingDirectory: resolvedDir,
+          plan: params.plan,
+          acceptanceCriteria: params.acceptanceCriteria ?? [],
+          allowedTools,
+          timeoutSeconds,
+          workspaceBefore
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      } catch (error2) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error2 instanceof Error ? error2.message : String(error2)
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+    }
+  );
+  server.tool(
+    "get_execution_status",
+    "Get the current state of a background Claude execution job.",
+    {
+      jobId: external_exports.string().uuid().describe("The job identifier returned by start_execution")
+    },
+    async ({ jobId }) => {
+      try {
+        const result = executionJobManager.getExecutionStatus(jobId);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      } catch (error2) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error2 instanceof Error ? error2.message : String(error2)
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+    }
+  );
+  server.tool(
+    "get_execution_logs",
+    "Read incremental stdout or stderr logs for a background Claude execution job.",
+    {
+      jobId: external_exports.string().uuid().describe("The job identifier returned by start_execution"),
+      stream: external_exports.enum(["stdout", "stderr"]).default("stderr").describe("Which log stream to read"),
+      offset: external_exports.number().int().min(0).default(0).describe("Character offset to start reading from"),
+      limit: external_exports.number().int().min(1).max(65536).default(65536).describe("Maximum number of characters to return")
+    },
+    async ({ jobId, stream, offset, limit }) => {
+      try {
+        const result = await executionJobManager.getExecutionLogs(
+          jobId,
+          stream,
+          offset,
+          limit
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      } catch (error2) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error2 instanceof Error ? error2.message : String(error2)
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+    }
+  );
+  server.tool(
+    "cancel_execution",
+    "Cancel a running background Claude execution job.",
+    {
+      jobId: external_exports.string().uuid().describe("The job identifier returned by start_execution")
+    },
+    {
+      destructiveHint: true,
+      idempotentHint: false
+    },
+    async ({ jobId }) => {
+      try {
+        const result = await executionJobManager.cancelExecution(jobId);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      } catch (error2) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: error2 instanceof Error ? error2.message : String(error2)
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
       }
     }
   );

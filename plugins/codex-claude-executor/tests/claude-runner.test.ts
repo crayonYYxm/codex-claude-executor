@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
-import { runClaude } from "../src/claude-runner.js";
+import { runClaude, startClaude } from "../src/claude-runner.js";
 import type { WorkspaceSnapshot } from "../src/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -211,5 +211,25 @@ describe("claude-runner", () => {
 
     expect(result.status).toBe("completed");
     expect(result.parsedOutput).toHaveProperty("status", "success");
+  });
+
+  it("allows an in-flight process to be cancelled explicitly", async () => {
+    const execution = startClaude({
+      workingDirectory: tempDir,
+      plan: "Long running test plan",
+      allowedTools: ["Read"],
+      timeoutSeconds: 30,
+      workspaceBefore: WORKSPACE_BEFORE,
+      claudeBin: FAKE_CLAUDE,
+      env: { FAKE_CLAUDE_MODE: "slow-success" },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    execution.cancel();
+
+    const result = await execution.completed;
+    expect(result.status).toBe("cancelled");
+    expect(result.error).toContain("cancelled");
+    expect(result.stderr).toContain("starting execution");
   });
 });

@@ -19,7 +19,8 @@ This skill defines the workflow for planning implementation work, obtaining user
 1. Inspect the repository using Codex's own read-only capabilities.
 2. Produce a concrete implementation plan.
 3. Identify any Claude tool rules required beyond the fixed allowlist.
-4. Do not call `execute_plan` yet.
+4. Decide whether the task is short enough for synchronous execution or should run in the background.
+5. Do not call `execute_plan` or `start_execution` yet.
 
 ### Phase 3: Confirmation
 
@@ -30,9 +31,11 @@ This skill defines the workflow for planning implementation work, obtaining user
 
 ### Phase 4: Execute
 
-1. Call `execute_plan` exactly once for the confirmed plan.
-2. Do not silently retry failures.
-3. Explain timeouts, execution failures, or environment errors.
+1. For short tasks, call `execute_plan` exactly once for the confirmed plan.
+2. For long tasks, call `start_execution` once, then monitor with `get_execution_status` and `get_execution_logs`.
+3. Use `cancel_execution` when the user wants to stop a running delegation.
+4. Do not silently retry failures.
+5. Explain timeouts, execution failures, or environment errors.
 
 ### Phase 5: Review
 

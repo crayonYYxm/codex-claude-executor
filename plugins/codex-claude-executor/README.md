@@ -10,7 +10,7 @@ This plugin enables a workflow where:
 2. **Codex shows** the plan and any additional requested permissions to the user
 3. **After user confirmation**, Codex calls an MCP tool bundled inside the plugin
 4. **The MCP server** invokes the locally installed Claude Code CLI to execute the plan
-5. **The MCP server** returns structured execution and workspace information
+5. **The MCP server** either returns structured execution results immediately or starts a background job for long-running work
 6. **Codex independently inspects** the resulting changes and reruns relevant tests
 
 ## Architecture
@@ -28,7 +28,7 @@ Bundled stdio MCP Server
 Local claude -p process
   │ edits files and runs allowed commands
   ▼
-Structured MCP result
+Structured MCP result or background job status
   │
   ▼
 Codex reviews actual diff and reruns tests
@@ -182,12 +182,22 @@ The plugin includes a fixed allowlist of safe tools:
 - Maximum 20 additional tools per execution
 - Each tool rule is validated (no empty values, no control characters, max 300 chars)
 
+## MCP Tools
+
+- `check_environment`: verifies Node, Claude Code availability, and Claude authentication
+- `execute_plan`: runs a confirmed plan synchronously and returns the final result
+- `start_execution`: starts a confirmed plan asynchronously for long-running work
+- `get_execution_status`: polls an async job until it reaches a terminal state
+- `get_execution_logs`: reads incremental `stdout` or `stderr` log slices from an async job
+- `cancel_execution`: requests cancellation of a running async job
+
 ## Security Limitations
 
 **Important:** This plugin invokes local Claude Code, which can modify local files.
 
 - Claude Code must already be installed and authenticated
 - `execute_plan` can modify local files in the working directory
+- `start_execution` can keep modifying local files until the job completes or is cancelled
 - Extra permissions apply only to one invocation
 - Existing uncommitted changes are not automatically isolated or reverted
 - The plugin does not create Git worktrees or automatic commits
@@ -220,6 +230,16 @@ The plugin includes a fixed allowlist of safe tools:
 1. Increase `timeoutSeconds` in `execute_plan` call (max 7200)
 2. Check if Claude is hanging on a prompt
 3. Verify Claude can access the working directory
+
+### Long-Running Tasks
+
+**Problem:** The task may exceed the outer Codex or MCP request timeout even though Claude is still making progress.
+
+**Solution:**
+1. Use `start_execution` instead of `execute_plan`
+2. Poll with `get_execution_status`
+3. Read progress with `get_execution_logs`
+4. Cancel with `cancel_execution` if the run is stuck or no longer needed
 
 ### Plugin MCP Not Visible
 

@@ -2,7 +2,13 @@ export type ExecutionStatus =
   | "completed"
   | "failed"
   | "timed_out"
+  | "cancelled"
   | "environment_error";
+
+export type JobStatus =
+  | "running"
+  | "cancelling"
+  | ExecutionStatus;
 
 export type GitWorkspaceSnapshot = {
   kind: "git";
@@ -33,6 +39,7 @@ export type ClaudeRunResult = {
 };
 
 export type ExecutePlanResult = ClaudeRunResult & {
+  jobId?: string;
   workingDirectory: string;
   allowedTools: string[];
   workspaceBefore: WorkspaceSnapshot;
@@ -55,4 +62,41 @@ export type ExecutePlanInput = {
   acceptanceCriteria?: string[];
   extraAllowedTools?: string[];
   timeoutSeconds?: number;
+};
+
+export type StartExecutionResult = {
+  jobId: string;
+  status: JobStatus;
+  workingDirectory: string;
+  allowedTools: string[];
+  timeoutSeconds: number;
+  createdAt: string;
+  startedAt: string;
+};
+
+export type ExecutionJobStatusResult = {
+  jobId: string;
+  status: JobStatus;
+  workingDirectory: string;
+  allowedTools: string[];
+  timeoutSeconds: number;
+  createdAt: string;
+  startedAt: string;
+  finishedAt: string | null;
+  workspaceBefore: WorkspaceSnapshot;
+  workspaceAfter: WorkspaceSnapshot | null;
+  result: ExecutePlanResult | null;
+  currentPid: number | null;
+};
+
+export type ExecutionLogStream = "stdout" | "stderr";
+
+export type ExecutionLogResult = {
+  jobId: string;
+  status: JobStatus;
+  stream: ExecutionLogStream;
+  offset: number;
+  nextOffset: number;
+  eof: boolean;
+  text: string;
 };
