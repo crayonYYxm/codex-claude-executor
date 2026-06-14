@@ -65,10 +65,11 @@ Codex independently verifies actual workspace
 - **Claude:** Performs implementation plus relevant tests, builds, lint checks, and typechecks
 - **Codex:** Performs final review and all preview/browser checks; the MCP server must not claim that work is correct merely because Claude reported success
 
-Claude runs non-interactively. It must not ask the user questions during an
-execution. When safe, it makes reasonable decisions consistent with the
-approved plan. If essential information is missing, it returns a structured
-error explaining exactly what is required.
+Claude runs non-interactively. `AskUserQuestion` is disabled at the Claude CLI
+boundary, and the execution prompt also instructs Claude not to wait for user
+input. When safe, it makes reasonable decisions consistent with the approved
+plan. If essential information is missing, it returns a structured error
+explaining exactly what is required.
 
 ## Prerequisites
 

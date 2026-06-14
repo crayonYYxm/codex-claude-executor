@@ -189,6 +189,8 @@ function startClaude(options, hooks = {}) {
     "dontAsk",
     "--no-session-persistence",
     "--no-chrome",
+    "--disallowedTools",
+    "AskUserQuestion",
     "--json-schema",
     RESULT_SCHEMA,
     "--allowedTools",

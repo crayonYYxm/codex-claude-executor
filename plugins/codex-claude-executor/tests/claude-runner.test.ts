@@ -295,6 +295,10 @@ describe("claude-runner", () => {
         "return status `error` and describe exactly what information is required"
       )
     );
+    expect(result.parsedOutput).toHaveProperty(
+      "args",
+      expect.arrayContaining(["--disallowedTools", "AskUserQuestion"])
+    );
   });
 
   it("tells Claude to keep long-running work observable and recoverable", async () => {
