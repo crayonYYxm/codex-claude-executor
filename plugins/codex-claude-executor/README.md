@@ -123,38 +123,6 @@ npm test -- tests/permissions.test.ts
 npm test -- --coverage
 ```
 
-## Benchmark Codex Token Usage
-
-To compare Codex token usage with and without this plugin, run the bundled
-benchmark harness:
-
-```bash
-npm run benchmark:codex-tokens -- --model gpt-5 --runs 3
-```
-
-The harness:
-
-- copies the same workspace template for each run
-- runs one direct Codex execution and one `@codex-claude-executor` execution
-- parses Codex `token_count` events from the JSONL transcript
-- verifies that the delegated run actually called executor tools
-- writes transcripts, per-run workspaces, and `summary.json` under
-  `benchmarks/results/<timestamp>/`
-
-Useful options:
-
-```bash
-node ./scripts/compare-codex-token-usage.mjs \
-  --workspace-template ./benchmarks/fixtures/greetings-workspace \
-  --prompt-file ./benchmarks/tasks/add-format-greeting.prompt.md \
-  --execution-mode claude_write_only \
-  --runs 5 \
-  --output json
-```
-
-Use your own workspace template and prompt file when you want to benchmark a
-real task instead of the bundled sample fixture.
-
 ## MCP Inspector
 
 To test the MCP server interactively:

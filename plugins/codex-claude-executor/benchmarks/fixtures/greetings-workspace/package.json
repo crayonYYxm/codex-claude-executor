@@ -1,8 +1,0 @@
-{
-  "name": "greetings-workspace",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test test/*.node-test.js"
-  }
-}
