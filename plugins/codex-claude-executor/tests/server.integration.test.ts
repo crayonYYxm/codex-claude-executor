@@ -137,6 +137,7 @@ describe("MCP Server Integration", () => {
     expect(data.status).toBe("completed");
     expect(data.workingDirectory).toBeTruthy();
     expect(data.allowedTools).toBeInstanceOf(Array);
+    expect(data.allowedTools).toContain("Bash");
     expect(data.workspaceBefore).toBeTruthy();
     expect(data.workspaceAfter).toBeTruthy();
   });

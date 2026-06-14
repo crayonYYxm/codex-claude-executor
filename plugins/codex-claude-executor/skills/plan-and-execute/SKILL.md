@@ -13,7 +13,7 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 - Codex owns planning, independent review, final verification, previews, and browser checks.
 - In `claude_write_only`, Codex must never take over implementation edits, even when Claude appears slow, has not created files yet, or the delegated execution is interrupted.
 - Claude must not run previews or browser verification.
-- `Read`, `Glob`, `Grep`, `Edit`, `Write`, and common test/build/lint/typecheck commands are fixed permissions. Never ask the user to reconfirm them.
+- `Read`, `Glob`, `Grep`, `Edit`, `Write`, unrestricted `Bash`, and common test/build/lint/typecheck commands are fixed permissions. Never ask the user to reconfirm them.
 - Never automatically revert user or Claude changes.
 
 ## Workflow
@@ -31,7 +31,7 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 
 1. Use `start_execution` by default for implementation and repair runs so the MCP client never waits on the long-running Claude request.
 2. The detached persistent worker survives MCP and Codex restarts. Leave `timeoutSeconds` omitted; it is retained only for compatibility and the worker always runs without a hard deadline.
-3. Poll `get_execution_status` until the job reaches a terminal state. Do not tight-loop; the tool enforces a minimum interval between repeated polls.
+3. Poll `get_execution_status` until the job reaches a terminal state. `running`, `restarting`, and `cancelling` are never final outcomes; do not report success or failure from an intermediate file check. Do not tight-loop; the tool enforces a minimum interval between repeated polls.
 4. Relay meaningful changes from `progress.message` to the user while Claude is running. Do not invent percentages.
 5. Use `get_execution_logs` when progress stalls or a terminal error needs diagnosis.
 6. Claude must run relevant tests, builds, lint checks, and typechecks before returning success.

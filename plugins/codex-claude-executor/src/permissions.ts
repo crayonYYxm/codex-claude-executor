@@ -1,7 +1,7 @@
 /**
  * Permissions module for controlling Claude Code tool access.
  *
- * Provides a fixed allowlist of safe tools and validation
+ * Provides a fixed allowlist of execution tools and validation
  * for per-execution additional tool permissions.
  */
 
@@ -12,6 +12,10 @@ export const FIXED_ALLOWED_TOOLS: readonly string[] = [
   "Grep",
   "Edit",
   "Write",
+
+  // Full shell access is required for normal implementation work such as
+  // creating directories, moving/removing files, and running project scripts.
+  "Bash",
 
   // Safe Git inspection commands
   "Bash(git status)",

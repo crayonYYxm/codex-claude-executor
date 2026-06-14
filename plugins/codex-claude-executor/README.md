@@ -7,7 +7,7 @@ A Codex plugin that lets Codex plan implementation work, delegate execution to l
 This plugin enables a workflow where:
 
 1. **Codex inspects** a repository and prepares an implementation plan
-2. **Codex confirms only non-fixed additional permissions when required**
+2. **Claude receives fixed file CRUD and unrestricted Bash permissions for the delegated run**
 3. **Codex starts** a background Claude execution through the bundled MCP server
 4. **The MCP server** starts a detached persistent worker that invokes the locally installed Claude Code CLI
 5. **The worker** survives MCP/Codex restarts, persists progress and logs, and restarts stalled Claude runs
@@ -187,16 +187,19 @@ codex mcp add claude-executor ...
 
 ### Fixed Allowed Tools
 
-The plugin includes a fixed allowlist of safe tools:
+The plugin includes a fixed allowlist of implementation tools:
 
 **File and Search Tools:**
 - `Read`, `Glob`, `Grep`, `Edit`, `Write`
 
-**Safe Git Inspection:**
-- `Bash(git status)`, `Bash(git diff)`, `Bash(git log)`, etc.
+**Shell:**
+- Unrestricted `Bash`, including normal file CRUD, project scripts, and Git commands
 
-Claude is granted common test, build, and lint commands. Preview and browser
-verification remain Codex responsibilities because they require Codex-side tools.
+The execution prompt still instructs Claude not to revert, reset, clean,
+checkout, commit, push, deploy, modify unrelated files, or access files outside
+the working directory. These are behavioral constraints rather than an OS-level
+sandbox. Preview and browser verification remain Codex responsibilities because
+they require Codex-side tools.
 
 ### Extra Permissions
 
@@ -244,6 +247,7 @@ are removed after seven days. Each stdout/stderr log keeps at most the latest
 - Claude Code must already be installed and authenticated
 - `execute_plan` can modify local files in the working directory
 - `start_execution` can keep modifying local files until the job completes or is cancelled
+- Unrestricted `Bash` means Claude can technically run commands or access paths outside the working directory; use this plugin only with trusted plans and repositories
 - Extra permissions apply only to one invocation
 - Existing uncommitted changes are not automatically isolated or reverted
 - The plugin does not create Git worktrees or automatic commits
@@ -316,6 +320,10 @@ changes from `running` to one terminal state: `completed`, `failed`,
 `timed_out`, `cancelled`, or `environment_error`. A zero process exit code is
 still reported as `failed` when Claude's final result has `is_error: true` or
 does not contain a final structured `success` result.
+
+Callers must continue polling while the status is `running`, `restarting`, or
+`cancelling`. Intermediate file checks are useful for progress visibility but
+must not be treated as the final execution result.
 
 ### Plugin MCP Not Visible
 

@@ -15,6 +15,10 @@ describe("permissions", () => {
       expect(FIXED_ALLOWED_TOOLS).toContain("Write");
     });
 
+    it("allows unrestricted Bash commands during delegated execution", () => {
+      expect(FIXED_ALLOWED_TOOLS).toContain("Bash");
+    });
+
     it("contains safe git inspection commands", () => {
       expect(FIXED_ALLOWED_TOOLS).toContain("Bash(git status)");
       expect(FIXED_ALLOWED_TOOLS).toContain("Bash(git status *)");
