@@ -39,6 +39,7 @@ async function createClient(
       CLAUDE_BIN: FAKE_CLAUDE,
       FAKE_CLAUDE_MODE: mode,
       CLAUDE_EXECUTOR_JOB_ROOT: jobRoot,
+      CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "0",
       ...extraEnv,
     },
   });
@@ -66,6 +67,7 @@ describe("MCP Server Integration", () => {
         CLAUDE_BIN: FAKE_CLAUDE,
         FAKE_CLAUDE_MODE: "success",
         CLAUDE_EXECUTOR_JOB_ROOT: SHARED_JOB_ROOT,
+        CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "0",
       },
     });
 
@@ -507,6 +509,76 @@ describe("MCP Server async execution lifecycle", () => {
 
       expect(finalData.status).toBe("cancelled");
       expect(finalData.result.status).toBe("cancelled");
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("requires explicit user confirmation to cancel claude_write_only jobs", async () => {
+    const { client } = await createClient("timeout");
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Write-only plan",
+          executionMode: "claude_write_only",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      const rejected = await client.callTool({
+        name: "cancel_execution",
+        arguments: { jobId: startData.jobId },
+      });
+      expect(rejected.isError).toBe(true);
+      expect(
+        (rejected.content as Array<{ type: string; text: string }>)[0].text
+      ).toContain("explicit user request");
+
+      const accepted = await client.callTool({
+        name: "cancel_execution",
+        arguments: { jobId: startData.jobId, userRequested: true },
+      });
+      expect(accepted.isError).toBeFalsy();
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("throttles rapid status polling at the tool boundary", async () => {
+    const { client } = await createClient("timeout", {
+      CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "75",
+    });
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Polling throttle plan",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      await client.callTool({
+        name: "get_execution_status",
+        arguments: { jobId: startData.jobId },
+      });
+      const startedAt = Date.now();
+      await client.callTool({
+        name: "get_execution_status",
+        arguments: { jobId: startData.jobId },
+      });
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(60);
+
+      await client.callTool({
+        name: "cancel_execution",
+        arguments: { jobId: startData.jobId },
+      });
     } finally {
       await client.close();
     }

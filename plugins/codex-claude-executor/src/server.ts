@@ -30,7 +30,8 @@ const SERVER_NAME = "claude-executor";
 const SERVER_VERSION = "0.1.0";
 const DEFAULT_SYNC_WAIT_MS = 90_000;
 const MAX_SYNC_WAIT_MS = 90_000;
-const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Treat a changing lastActivityAt or thinking progress as active work; do not cancel an active job merely because no file has appeared yet. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If Codex verification fails, create a focused repair plan and delegate it to Claude without asking the user to reconfirm. Repeat until verification passes. Stop the loop only when Claude returns failed or environment_error, or the user cancels. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
+const DEFAULT_MIN_POLL_INTERVAL_MS = 3_000;
+const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Treat a changing lastActivityAt or thinking progress as active work; do not cancel an active job merely because no file has appeared yet. Only call cancel_execution after the user explicitly asks to cancel; claude_write_only jobs enforce this at the tool boundary. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If verification fails, delegate a focused repair plan to Claude and never directly patch code in claude_write_only mode. If Claude returns failed or environment_error, or cannot recover from interruption, stop, report exact evidence, and ask the user whether to wait, investigate, retry Claude, or explicitly authorize Codex takeover. Do not choose a takeover path without user authorization. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
 const EXECUTION_MODE_SCHEMA = z
   .enum(["standard", "claude_write_only"])
   .default("standard")
@@ -50,6 +51,14 @@ function getSyncWaitMs(): number {
     return DEFAULT_SYNC_WAIT_MS;
   }
   return Math.min(Math.floor(configured), MAX_SYNC_WAIT_MS);
+}
+
+function getMinPollIntervalMs(): number {
+  const configured = Number(process.env.CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS);
+  if (!Number.isFinite(configured)) {
+    return DEFAULT_MIN_POLL_INTERVAL_MS;
+  }
+  return Math.max(0, Math.floor(configured));
 }
 
 /**
@@ -80,6 +89,7 @@ function execCommand(
  * Create and configure an MCP server instance.
  */
 export function createServer(): McpServer {
+  const lastStatusPollAt = new Map<string, number>();
   const server = new McpServer(
     {
       name: SERVER_NAME,
@@ -356,12 +366,21 @@ export function createServer(): McpServer {
 
   server.tool(
     "get_execution_status",
-    "Get persistent job state, attempt/recovery metadata, and latest readable Claude progress.",
+    "Get persistent job state, attempt/recovery metadata, and latest readable Claude progress. Rapid repeated polls are throttled server-side.",
     {
       jobId: z.string().uuid().describe("The job identifier returned by start_execution"),
     },
     async ({ jobId }) => {
       try {
+        const minIntervalMs = getMinPollIntervalMs();
+        const lastPollAt = lastStatusPollAt.get(jobId);
+        if (lastPollAt !== undefined) {
+          const remainingMs = minIntervalMs - (Date.now() - lastPollAt);
+          if (remainingMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remainingMs));
+          }
+        }
+        lastStatusPollAt.set(jobId, Date.now());
         const result = await executionJobManager.getExecutionStatus(jobId);
         return {
           content: [
@@ -452,17 +471,26 @@ export function createServer(): McpServer {
 
   server.tool(
     "cancel_execution",
-    "Cancel a running background Claude execution job.",
+    "Cancel a running background Claude execution job only after the user explicitly asks to cancel.",
     {
       jobId: z.string().uuid().describe("The job identifier returned by start_execution"),
+      userRequested: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Set true only when the user explicitly requested cancellation. Required for claude_write_only jobs."
+        ),
     },
     {
       destructiveHint: true,
       idempotentHint: false,
     },
-    async ({ jobId }) => {
+    async ({ jobId, userRequested }) => {
       try {
-        const result = await executionJobManager.cancelExecution(jobId);
+        const result = await executionJobManager.cancelExecution(
+          jobId,
+          userRequested
+        );
         return {
           content: [
             {

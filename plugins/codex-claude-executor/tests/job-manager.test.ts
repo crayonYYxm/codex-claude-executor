@@ -89,6 +89,23 @@ describe("persistent job manager", () => {
     await cancelAndWait(manager, first.jobId);
   });
 
+  it("rejects unconfirmed cancellation for claude_write_only jobs", async () => {
+    const manager = new ExecutionJobManager(rootDirectory);
+    const started = await manager.startExecution({
+      ...startOptions(workspaceA),
+      executionMode: "claude_write_only",
+      env: { FAKE_CLAUDE_MODE: "timeout" },
+    });
+
+    await expect(manager.cancelExecution(started.jobId)).rejects.toThrow(
+      "explicit user request"
+    );
+    const active = await manager.getExecutionStatus(started.jobId);
+    expect(["running", "restarting"]).toContain(active.status);
+
+    await manager.cancelExecution(started.jobId, true);
+  });
+
   it("loads status and logs from disk in a new manager instance", async () => {
     const firstManager = new ExecutionJobManager(rootDirectory);
     const started = await firstManager.startExecution(startOptions(workspaceA));

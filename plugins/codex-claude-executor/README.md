@@ -19,6 +19,15 @@ This plugin enables a workflow where:
 - `standard`: the default behavior. Codex plans, delegates, reviews, and may choose to patch issues itself outside delegated runs.
 - `claude_write_only`: Codex stays in a planner/reviewer role while Claude is expected to perform all code changes inside the delegated run. If review later finds issues, Codex should issue a follow-up plan instead of directly patching code unless the user explicitly overrides that workflow.
 
+For `claude_write_only` jobs, `cancel_execution` rejects cancellation unless
+`userRequested: true` is supplied after an explicit user cancellation request.
+Repeated `get_execution_status` calls are throttled server-side to prevent tight
+polling loops.
+
+If Claude fails or cannot recover from an interruption, Codex must report the
+evidence and ask the user whether to wait, investigate, retry Claude, or
+explicitly authorize Codex takeover. Codex does not select takeover on its own.
+
 ## Architecture
 
 ```

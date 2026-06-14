@@ -512,9 +512,17 @@ export class ExecutionJobManager {
     }
   }
 
-  async cancelExecution(jobId: string): Promise<ExecutionJobStatusResult> {
+  async cancelExecution(
+    jobId: string,
+    userRequested = false
+  ): Promise<ExecutionJobStatusResult> {
     await this.initialization;
     const status = await this.getExecutionStatus(jobId);
+    if (status.executionMode === "claude_write_only" && !userRequested) {
+      throw new Error(
+        "Cancelling a claude_write_only job requires an explicit user request"
+      );
+    }
     if (!isTerminalStatus(status.status)) {
       status.status = "cancelling";
       await fs.writeFile(jobPath(this.rootDirectory, jobId, "cancel.flag"), "");

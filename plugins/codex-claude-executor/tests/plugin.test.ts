@@ -71,7 +71,7 @@ describe("plugin structure", () => {
     expect(content).toContain("description:");
   });
 
-  it("documents the autonomous Codex review and Claude repair loop", () => {
+  it("documents Claude-owned edits and the user decision gate after interruption", () => {
     const skillPath = path.join(
       PROJECT_ROOT,
       "skills",
@@ -81,10 +81,10 @@ describe("plugin structure", () => {
     const content = fs.readFileSync(skillPath, "utf-8");
 
     expect(content).toContain(
-      "If Codex verification fails, create a focused repair plan and delegate it to Claude without asking the user to reconfirm."
+      "If Codex verification fails, create a focused repair plan and delegate it to Claude. Codex must not directly patch the code."
     );
     expect(content).toContain(
-      "Stop the loop only when Claude returns `failed` or `environment_error`"
+      "Ask the user whether to continue waiting, investigate the cause, retry Claude, or explicitly authorize Codex to take over."
     );
     expect(content).toContain(
       "Use `start_execution` by default for implementation and repair runs"
