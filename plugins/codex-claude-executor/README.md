@@ -65,6 +65,11 @@ Codex independently verifies actual workspace
 - **Claude:** Performs implementation plus relevant tests, builds, lint checks, and typechecks
 - **Codex:** Performs final review and all preview/browser checks; the MCP server must not claim that work is correct merely because Claude reported success
 
+Claude runs non-interactively. It must not ask the user questions during an
+execution. When safe, it makes reasonable decisions consistent with the
+approved plan. If essential information is missing, it returns a structured
+error explaining exactly what is required.
+
 ## Prerequisites
 
 - Node.js (v20 or later)
@@ -239,6 +244,24 @@ minutes is restarted automatically, with at most three total attempts.
 Persistent jobs are stored under `~/.codex/claude-executor/jobs/`. Terminal jobs
 are removed after seven days. Each stdout/stderr log keeps at most the latest
 20MB.
+
+### Long-Running Execution
+
+- Claude runs without a hard subprocess deadline.
+- A detached persistent worker continues after the MCP server or Codex restarts.
+- Job state, progress, logs, and results are persisted on disk.
+- The worker treats stdout, stderr, tool events, and thinking events as activity.
+- After 15 minutes without activity, the worker restarts Claude from the
+  approved plan while preserving existing workspace changes, for at most three
+  total attempts.
+- Long commands should emit periodic progress, and large tasks should use
+  recoverable checkpoints. The main work must stay in the foreground instead of
+  being left in an untracked background process.
+
+The defaults can be tuned through `CLAUDE_EXECUTOR_STALL_MS`,
+`CLAUDE_EXECUTOR_MAX_ATTEMPTS`, and `CLAUDE_EXECUTOR_LOG_LIMIT_BYTES`. No
+software process can continue through machine shutdown, disk failure, or loss
+of the underlying Claude service.
 
 ## Security Limitations
 

@@ -269,6 +269,56 @@ describe("claude-runner", () => {
     );
   });
 
+  it("tells Claude to execute non-interactively and fail clearly when blocked", async () => {
+    const result = await runClaude({
+      workingDirectory: tempDir,
+      plan: "Implement without asking follow-up questions",
+      allowedTools: ["Read", "Write", "Bash"],
+      timeoutSeconds: 30,
+      workspaceBefore: WORKSPACE_BEFORE,
+      claudeBin: fakeClaude,
+      env: { FAKE_CLAUDE_MODE: "success" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.parsedOutput).toHaveProperty(
+      "prompt",
+      expect.stringContaining("Never use AskUserQuestion")
+    );
+    expect(result.parsedOutput).toHaveProperty(
+      "prompt",
+      expect.stringContaining("Make reasonable implementation decisions")
+    );
+    expect(result.parsedOutput).toHaveProperty(
+      "prompt",
+      expect.stringContaining(
+        "return status `error` and describe exactly what information is required"
+      )
+    );
+  });
+
+  it("tells Claude to keep long-running work observable and recoverable", async () => {
+    const result = await runClaude({
+      workingDirectory: tempDir,
+      plan: "Run a long implementation task",
+      allowedTools: ["Read", "Write", "Bash"],
+      timeoutSeconds: 0,
+      workspaceBefore: WORKSPACE_BEFORE,
+      claudeBin: fakeClaude,
+      env: { FAKE_CLAUDE_MODE: "success" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.parsedOutput).toHaveProperty(
+      "prompt",
+      expect.stringContaining("periodic progress output")
+    );
+    expect(result.parsedOutput).toHaveProperty(
+      "prompt",
+      expect.stringContaining("recoverable checkpoints")
+    );
+  });
+
   it("applies working directory", async () => {
     const result = await runClaude({
       workingDirectory: tempDir,

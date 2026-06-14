@@ -14,6 +14,7 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 - In `claude_write_only`, Codex must never take over implementation edits, even when Claude appears slow, has not created files yet, or the delegated execution is interrupted.
 - Claude must not run previews or browser verification.
 - `Read`, `Glob`, `Grep`, `Edit`, `Write`, unrestricted `Bash`, and common test/build/lint/typecheck commands are fixed permissions. Never ask the user to reconfirm them.
+- Claude execution is non-interactive. Claude must never ask the user questions; it should make safe reasonable decisions or return a structured error that identifies the missing essential information.
 - Never automatically revert user or Claude changes.
 
 ## Workflow
@@ -35,8 +36,9 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 4. Relay meaningful changes from `progress.message` to the user while Claude is running. Do not invent percentages.
 5. Use `get_execution_logs` when progress stalls or a terminal error needs diagnosis.
 6. Claude must run relevant tests, builds, lint checks, and typechecks before returning success.
-7. The worker automatically restarts Claude after 15 minutes without activity, for at most three total attempts.
-8. Never call `cancel_execution` unless the user explicitly asks to cancel. For `claude_write_only`, pass `userRequested: true` only after that explicit request.
+7. Keep long-running work observable and recoverable: Claude should run the main work in the foreground, emit periodic progress for long commands, and split large work into recoverable checkpoints.
+8. The worker automatically restarts Claude after 15 minutes without activity, for at most three total attempts.
+9. Never call `cancel_execution` unless the user explicitly asks to cancel. For `claude_write_only`, pass `userRequested: true` only after that explicit request.
 
 ### Phase 3: Handle Claude Result
 
