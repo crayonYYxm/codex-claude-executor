@@ -40,6 +40,7 @@ async function createClient(
       FAKE_CLAUDE_MODE: mode,
       CLAUDE_EXECUTOR_JOB_ROOT: jobRoot,
       CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "0",
+      CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS: "0",
       ...extraEnv,
     },
   });
@@ -68,6 +69,7 @@ describe("MCP Server Integration", () => {
         FAKE_CLAUDE_MODE: "success",
         CLAUDE_EXECUTOR_JOB_ROOT: SHARED_JOB_ROOT,
         CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "0",
+        CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS: "0",
       },
     });
 
@@ -573,6 +575,42 @@ describe("MCP Server async execution lifecycle", () => {
       await client.callTool({
         name: "get_execution_status",
         arguments: { jobId: startData.jobId },
+      });
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(60);
+
+      await client.callTool({
+        name: "cancel_execution",
+        arguments: { jobId: startData.jobId },
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("throttles rapid log polling at the tool boundary", async () => {
+    const { client } = await createClient("slow-success", {
+      CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS: "75",
+    });
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Log throttle plan",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      await client.callTool({
+        name: "get_execution_logs",
+        arguments: { jobId: startData.jobId, stream: "stderr", offset: 0, limit: 256 },
+      });
+      const startedAt = Date.now();
+      await client.callTool({
+        name: "get_execution_logs",
+        arguments: { jobId: startData.jobId, stream: "stderr", offset: 0, limit: 256 },
       });
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(60);
 

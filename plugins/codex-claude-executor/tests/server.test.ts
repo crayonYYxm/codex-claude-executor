@@ -26,4 +26,13 @@ describe("server execution response classification", () => {
       "while the job remains running, restarting, or cancelling, Codex must not modify files in that workspace"
     );
   });
+
+  it("documents slower polling and diagnostic-only log reads", () => {
+    expect(SERVER_INSTRUCTIONS).toContain(
+      "Poll status at meaningful intervals rather than every few seconds"
+    );
+    expect(SERVER_INSTRUCTIONS).toContain(
+      "read execution logs only when progress stalls or terminal diagnosis is needed"
+    );
+  });
 });

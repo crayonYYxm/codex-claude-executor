@@ -22,7 +22,7 @@ This plugin enables a workflow where:
 For `claude_write_only` jobs, `cancel_execution` rejects cancellation unless
 `userRequested: true` is supplied after an explicit user cancellation request.
 Repeated `get_execution_status` calls are throttled server-side to prevent tight
-polling loops.
+polling loops, and repeated `get_execution_logs` calls are throttled as well.
 
 If Claude fails or cannot recover from an interruption, Codex must report the
 evidence and ask the user whether to wait, investigate, retry Claude, or

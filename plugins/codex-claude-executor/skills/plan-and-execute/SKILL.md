@@ -33,9 +33,9 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 
 1. Use `start_execution` by default for implementation and repair runs so the MCP client never waits on the long-running Claude request.
 2. The detached persistent worker survives MCP and Codex restarts. Leave `timeoutSeconds` omitted; it is retained only for compatibility and the worker always runs without a hard deadline.
-3. Poll `get_execution_status` until the job reaches a terminal state. `running`, `restarting`, and `cancelling` are never final outcomes; do not report success or failure from an intermediate file check. Partial workspace diffs during these states are not permission for Codex to intervene or patch code. Do not tight-loop; the tool enforces a minimum interval between repeated polls.
+3. Poll `get_execution_status` until the job reaches a terminal state. `running`, `restarting`, and `cancelling` are never final outcomes; do not report success or failure from an intermediate file check. Partial workspace diffs during these states are not permission for Codex to intervene or patch code. Do not tight-loop; the tool enforces a minimum interval between repeated polls and the default cadence is intentionally much slower than a human heartbeat.
 4. Relay meaningful changes from `progress.message` to the user while Claude is running. Do not invent percentages.
-5. Use `get_execution_logs` when progress stalls or a terminal error needs diagnosis.
+5. Use `get_execution_logs` when progress stalls or a terminal error needs diagnosis. Do not read logs on every loop just because they are available.
 6. Claude must run relevant tests, builds, lint checks, and typechecks before returning success.
 7. Keep long-running work observable and recoverable: Claude should run the main work in the foreground, emit periodic progress for long commands, and split large work into recoverable checkpoints.
 8. The worker automatically restarts Claude after 15 minutes without activity, for at most three total attempts.

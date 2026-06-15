@@ -92,6 +92,9 @@ describe("plugin structure", () => {
     expect(content).toContain(
       "Use `start_execution` by default for implementation and repair runs"
     );
+    expect(content).toContain(
+      "Do not read logs on every loop just because they are available."
+    );
   });
 
   it("no production source file contains console.log", () => {

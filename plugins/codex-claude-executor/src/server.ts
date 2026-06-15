@@ -30,8 +30,9 @@ const SERVER_NAME = "claude-executor";
 const SERVER_VERSION = "0.1.0";
 const DEFAULT_SYNC_WAIT_MS = 90_000;
 const MAX_SYNC_WAIT_MS = 90_000;
-const DEFAULT_MIN_POLL_INTERVAL_MS = 3_000;
-export const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Treat running, restarting, and cancelling as non-terminal states: keep polling and never report success or failure from an intermediate workspace snapshot. Partial workspace diffs during these active states are not permission for Codex to intervene or patch code. In claude_write_only mode, while the job remains running, restarting, or cancelling, Codex must not modify files in that workspace, even to finish only the untouched half of a partial implementation. Treat a changing lastActivityAt or thinking progress as active work; do not cancel an active job merely because no file has appeared yet. Claude runs non-interactively: it must never ask the user questions, and missing essential information must be returned as a structured error. Long-running work must stay in the foreground and should emit periodic progress or use recoverable checkpoints so the worker can distinguish active work from a stall. Only call cancel_execution after the user explicitly asks to cancel; claude_write_only jobs enforce this at the tool boundary. Claude has fixed Read, Glob, Grep, Edit, Write, and unrestricted Bash permissions during delegated execution, so it can perform normal file CRUD and project commands without reconfirmation. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If verification fails, delegate a focused repair plan to Claude and never directly patch code in claude_write_only mode. If Claude returns failed or environment_error, or cannot recover from interruption, stop, report exact evidence, and ask the user whether to wait, investigate, retry Claude, or explicitly authorize Codex takeover. Do not choose a takeover path without user authorization. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
+const DEFAULT_MIN_STATUS_POLL_INTERVAL_MS = 10_000;
+const DEFAULT_MIN_LOG_POLL_INTERVAL_MS = 10_000;
+export const SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Treat running, restarting, and cancelling as non-terminal states: keep polling and never report success or failure from an intermediate workspace snapshot. Partial workspace diffs during these active states are not permission for Codex to intervene or patch code. In claude_write_only mode, while the job remains running, restarting, or cancelling, Codex must not modify files in that workspace, even to finish only the untouched half of a partial implementation. Treat a changing lastActivityAt or thinking progress as active work; do not cancel an active job merely because no file has appeared yet. Claude runs non-interactively: it must never ask the user questions, and missing essential information must be returned as a structured error. Long-running work must stay in the foreground and should emit periodic progress or use recoverable checkpoints so the worker can distinguish active work from a stall. Poll status at meaningful intervals rather than every few seconds, and read execution logs only when progress stalls or terminal diagnosis is needed. Only call cancel_execution after the user explicitly asks to cancel; claude_write_only jobs enforce this at the tool boundary. Claude has fixed Read, Glob, Grep, Edit, Write, and unrestricted Bash permissions during delegated execution, so it can perform normal file CRUD and project commands without reconfirmation. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If verification fails, delegate a focused repair plan to Claude and never directly patch code in claude_write_only mode. If Claude returns failed or environment_error, or cannot recover from interruption, stop, report exact evidence, and ask the user whether to wait, investigate, retry Claude, or explicitly authorize Codex takeover. Do not choose a takeover path without user authorization. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
 const EXECUTION_MODE_SCHEMA = z
   .enum(["standard", "claude_write_only"])
   .default("standard")
@@ -53,12 +54,37 @@ function getSyncWaitMs(): number {
   return Math.min(Math.floor(configured), MAX_SYNC_WAIT_MS);
 }
 
-function getMinPollIntervalMs(): number {
+function getMinStatusPollIntervalMs(): number {
   const configured = Number(process.env.CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS);
   if (!Number.isFinite(configured)) {
-    return DEFAULT_MIN_POLL_INTERVAL_MS;
+    return DEFAULT_MIN_STATUS_POLL_INTERVAL_MS;
   }
   return Math.max(0, Math.floor(configured));
+}
+
+function getMinLogPollIntervalMs(): number {
+  const configured = Number(
+    process.env.CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS
+  );
+  if (!Number.isFinite(configured)) {
+    return DEFAULT_MIN_LOG_POLL_INTERVAL_MS;
+  }
+  return Math.max(0, Math.floor(configured));
+}
+
+async function throttlePoll(
+  pollMap: Map<string, number>,
+  key: string,
+  minIntervalMs: number
+): Promise<void> {
+  const lastPollAt = pollMap.get(key);
+  if (lastPollAt !== undefined) {
+    const remainingMs = minIntervalMs - (Date.now() - lastPollAt);
+    if (remainingMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remainingMs));
+    }
+  }
+  pollMap.set(key, Date.now());
 }
 
 /**
@@ -90,6 +116,7 @@ function execCommand(
  */
 export function createServer(): McpServer {
   const lastStatusPollAt = new Map<string, number>();
+  const lastLogPollAt = new Map<string, number>();
   const server = new McpServer(
     {
       name: SERVER_NAME,
@@ -372,15 +399,11 @@ export function createServer(): McpServer {
     },
     async ({ jobId }) => {
       try {
-        const minIntervalMs = getMinPollIntervalMs();
-        const lastPollAt = lastStatusPollAt.get(jobId);
-        if (lastPollAt !== undefined) {
-          const remainingMs = minIntervalMs - (Date.now() - lastPollAt);
-          if (remainingMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, remainingMs));
-          }
-        }
-        lastStatusPollAt.set(jobId, Date.now());
+        await throttlePoll(
+          lastStatusPollAt,
+          jobId,
+          getMinStatusPollIntervalMs()
+        );
         const result = await executionJobManager.getExecutionStatus(jobId);
         return {
           content: [
@@ -412,7 +435,7 @@ export function createServer(): McpServer {
 
   server.tool(
     "get_execution_logs",
-    "Read incremental stdout or stderr logs for a background Claude execution job.",
+    "Read incremental stdout or stderr logs for a background Claude execution job. Rapid repeated log polls are throttled server-side.",
     {
       jobId: z.string().uuid().describe("The job identifier returned by start_execution"),
       stream: z
@@ -435,6 +458,11 @@ export function createServer(): McpServer {
     },
     async ({ jobId, stream, offset, limit }) => {
       try {
+        await throttlePoll(
+          lastLogPollAt,
+          `${jobId}:${stream}`,
+          getMinLogPollIntervalMs()
+        );
         const result = await executionJobManager.getExecutionLogs(
           jobId,
           stream,
