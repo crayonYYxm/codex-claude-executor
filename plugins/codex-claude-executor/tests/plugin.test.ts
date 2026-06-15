@@ -87,6 +87,9 @@ describe("plugin structure", () => {
       "Ask the user whether to continue waiting, investigate the cause, retry Claude, or explicitly authorize Codex to take over."
     );
     expect(content).toContain(
+      'While a `claude_write_only` job for a workspace remains `running`, `restarting`, or `cancelling`, Codex must not edit files in that workspace'
+    );
+    expect(content).toContain(
       "Use `start_execution` by default for implementation and repair runs"
     );
   });

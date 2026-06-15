@@ -27,6 +27,9 @@ polling loops.
 If Claude fails or cannot recover from an interruption, Codex must report the
 evidence and ask the user whether to wait, investigate, retry Claude, or
 explicitly authorize Codex takeover. Codex does not select takeover on its own.
+While a `claude_write_only` job is still `running`, `restarting`, or
+`cancelling`, Codex must not patch files in that workspace, even if an
+intermediate diff shows only part of the planned change has landed.
 
 ## Architecture
 

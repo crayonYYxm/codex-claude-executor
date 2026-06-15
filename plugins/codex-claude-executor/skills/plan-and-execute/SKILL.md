@@ -12,6 +12,7 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 - Claude owns all implementation edits plus relevant tests, builds, lint checks, and typechecks.
 - Codex owns planning, independent review, final verification, previews, and browser checks.
 - In `claude_write_only`, Codex must never take over implementation edits, even when Claude appears slow, has not created files yet, or the delegated execution is interrupted.
+- While a `claude_write_only` job for a workspace remains `running`, `restarting`, or `cancelling`, Codex must not edit files in that workspace, even to "finish one side", "补上另一半", or clean up a partial intermediate diff.
 - Claude must not run previews or browser verification.
 - `Read`, `Glob`, `Grep`, `Edit`, `Write`, unrestricted `Bash`, and common test/build/lint/typecheck commands are fixed permissions. Never ask the user to reconfirm them.
 - Claude execution is non-interactive. Claude must never ask the user questions; it should make safe reasonable decisions or return a structured error that identifies the missing essential information.
@@ -32,7 +33,7 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 
 1. Use `start_execution` by default for implementation and repair runs so the MCP client never waits on the long-running Claude request.
 2. The detached persistent worker survives MCP and Codex restarts. Leave `timeoutSeconds` omitted; it is retained only for compatibility and the worker always runs without a hard deadline.
-3. Poll `get_execution_status` until the job reaches a terminal state. `running`, `restarting`, and `cancelling` are never final outcomes; do not report success or failure from an intermediate file check. Do not tight-loop; the tool enforces a minimum interval between repeated polls.
+3. Poll `get_execution_status` until the job reaches a terminal state. `running`, `restarting`, and `cancelling` are never final outcomes; do not report success or failure from an intermediate file check. Partial workspace diffs during these states are not permission for Codex to intervene or patch code. Do not tight-loop; the tool enforces a minimum interval between repeated polls.
 4. Relay meaningful changes from `progress.message` to the user while Claude is running. Do not invent percentages.
 5. Use `get_execution_logs` when progress stalls or a terminal error needs diagnosis.
 6. Claude must run relevant tests, builds, lint checks, and typechecks before returning success.
