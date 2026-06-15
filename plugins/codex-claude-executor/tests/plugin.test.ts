@@ -95,6 +95,9 @@ describe("plugin structure", () => {
     expect(content).toContain(
       "Do not read logs on every loop just because they are available."
     );
+    expect(content).toContain(
+      "allow one sparse heartbeat about every 3 minutes"
+    );
   });
 
   it("no production source file contains console.log", () => {

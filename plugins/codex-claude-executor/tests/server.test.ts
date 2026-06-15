@@ -29,10 +29,16 @@ describe("server execution response classification", () => {
 
   it("documents slower polling and diagnostic-only log reads", () => {
     expect(SERVER_INSTRUCTIONS).toContain(
-      "Poll status at meaningful intervals rather than every few seconds"
+      "Make the first status check after roughly 15 seconds"
     );
     expect(SERVER_INSTRUCTIONS).toContain(
-      "read execution logs only when progress stalls or terminal diagnosis is needed"
+      "Healthy long-running jobs should usually be checked about once per minute"
+    );
+    expect(SERVER_INSTRUCTIONS).toContain(
+      "at most one sparse heartbeat about every 3 minutes"
+    );
+    expect(SERVER_INSTRUCTIONS).toContain(
+      "Read execution logs only when progress stalls, after a restart, or when terminal diagnosis is needed"
     );
   });
 });

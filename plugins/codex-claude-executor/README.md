@@ -23,6 +23,9 @@ For `claude_write_only` jobs, `cancel_execution` rejects cancellation unless
 `userRequested: true` is supplied after an explicit user cancellation request.
 Repeated `get_execution_status` calls are throttled server-side to prevent tight
 polling loops, and repeated `get_execution_logs` calls are throttled as well.
+The default monitoring posture is event-driven: make the first status check
+after roughly 15 seconds, check healthy long-running jobs about once per
+minute, and allow at most one sparse heartbeat about every 3 minutes.
 
 If Claude fails or cannot recover from an interruption, Codex must report the
 evidence and ask the user whether to wait, investigate, retry Claude, or
