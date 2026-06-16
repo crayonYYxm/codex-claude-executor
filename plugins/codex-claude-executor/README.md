@@ -25,7 +25,11 @@ Repeated `get_execution_status` calls are throttled server-side to prevent tight
 polling loops, and repeated `get_execution_logs` calls are throttled as well.
 The default monitoring posture is event-driven: make the first status check
 after roughly 15 seconds, check healthy long-running jobs about once per
-minute, and allow at most one sparse heartbeat about every 3 minutes.
+minute, medium jobs about every 2 minutes, and long healthy jobs as slowly as
+every 5 minutes. Heartbeats are sparse by tier: short jobs about every 3
+minutes, medium jobs about every 4 minutes, and long jobs about every 5
+minutes. Non-terminal Claude jobs must never be presented to the user as if the
+task were finished.
 
 If Claude fails or cannot recover from an interruption, Codex must report the
 evidence and ask the user whether to wait, investigate, retry Claude, or

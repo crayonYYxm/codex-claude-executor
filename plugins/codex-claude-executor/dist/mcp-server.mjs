@@ -21125,8 +21125,8 @@ async function resolveWorkingDirectory(inputPath) {
   if (resolved === path.parse(resolved).root) {
     throw new Error("Working directory cannot be the filesystem root");
   }
-  const stat4 = await fs.stat(resolved);
-  if (!stat4.isDirectory()) {
+  const stat5 = await fs.stat(resolved);
+  if (!stat5.isDirectory()) {
     throw new Error("Working directory is not a directory");
   }
   return resolved;
@@ -21148,8 +21148,8 @@ async function execCommand(command, args, cwd) {
   });
 }
 async function captureWorkspaceSnapshot(directory) {
-  const stat4 = await fs.stat(directory);
-  if (!stat4.isDirectory()) {
+  const stat5 = await fs.stat(directory);
+  if (!stat5.isDirectory()) {
     throw new Error(`Workspace path is not a directory: ${directory}`);
   }
   const toplevel = await execCommand(
@@ -21354,6 +21354,9 @@ async function readStatus(root, jobId) {
 async function writeStatus(root, jobId, status) {
   await atomicWriteJson(jobPath(root, jobId, "status.json"), status);
 }
+async function readRequest(root, jobId) {
+  return readJson(jobPath(root, jobId, "request.json"));
+}
 async function writeResult(root, jobId, result) {
   await atomicWriteJson(jobPath(root, jobId, "result.json"), result);
 }
@@ -21549,8 +21552,8 @@ ${Date.now()}`, "utf-8");
     } catch (error2) {
       if (error2.code !== "EEXIST") throw error2;
       try {
-        const stat4 = await fs3.stat(leasePath);
-        if (Date.now() - stat4.mtimeMs > 5e3) {
+        const stat5 = await fs3.stat(leasePath);
+        if (Date.now() - stat5.mtimeMs > 5e3) {
           await fs3.rm(leasePath, { force: true });
           return this.acquireRecoveryLease(jobId);
         }
@@ -21809,9 +21812,9 @@ ${Date.now()}`, "utf-8");
     const filePath = jobPath(this.rootDirectory, jobId, `${stream}.log`);
     const handle = await fs3.open(filePath, "r");
     try {
-      const stat4 = await handle.stat();
-      const safeOffset = Math.min(offset, stat4.size);
-      const length = Math.min(limit, stat4.size - safeOffset);
+      const stat5 = await handle.stat();
+      const safeOffset = Math.min(offset, stat5.size);
+      const length = Math.min(limit, stat5.size - safeOffset);
       const buffer = Buffer.alloc(length);
       await handle.read(buffer, 0, length, safeOffset);
       return {
@@ -21820,7 +21823,7 @@ ${Date.now()}`, "utf-8");
         stream,
         offset: safeOffset,
         nextOffset: safeOffset + length,
-        eof: safeOffset + length >= stat4.size,
+        eof: safeOffset + length >= stat5.size,
         text: buffer.toString("utf-8")
       };
     } finally {
@@ -21850,15 +21853,36 @@ var SERVER_NAME = "claude-executor";
 var SERVER_VERSION = "0.1.0";
 var DEFAULT_SYNC_WAIT_MS = 9e4;
 var MAX_SYNC_WAIT_MS = 9e4;
-var DEFAULT_MIN_STATUS_POLL_INTERVAL_MS = 6e4;
-var DEFAULT_MIN_LOG_POLL_INTERVAL_MS = 6e4;
-var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Make the first status check after roughly 15 seconds. Healthy long-running jobs should usually be checked about once per minute. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Treat running, restarting, and cancelling as non-terminal states: keep polling and never report success or failure from an intermediate workspace snapshot. Partial workspace diffs during these active states are not permission for Codex to intervene or patch code. In claude_write_only mode, while the job remains running, restarting, or cancelling, Codex must not modify files in that workspace, even to finish only the untouched half of a partial implementation. Treat a changing lastActivityAt or thinking progress as active work; do not cancel an active job merely because no file has appeared yet. Claude runs non-interactively: it must never ask the user questions, and missing essential information must be returned as a structured error. Long-running work must stay in the foreground and should emit periodic progress or use recoverable checkpoints so the worker can distinguish active work from a stall. Prefer event-driven monitoring over routine narration: allow at most one sparse heartbeat about every 3 minutes while a healthy long-running job keeps making progress. Read execution logs only when progress stalls, after a restart, or when terminal diagnosis is needed. Only call cancel_execution after the user explicitly asks to cancel; claude_write_only jobs enforce this at the tool boundary. Claude has fixed Read, Glob, Grep, Edit, Write, and unrestricted Bash permissions during delegated execution, so it can perform normal file CRUD and project commands without reconfirmation. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If verification fails, delegate a focused repair plan to Claude and never directly patch code in claude_write_only mode. If Claude returns failed or environment_error, or cannot recover from interruption, stop, report exact evidence, and ask the user whether to wait, investigate, retry Claude, or explicitly authorize Codex takeover. Do not choose a takeover path without user authorization. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
+var FIRST_STATUS_POLL_DELAY_MS = 15e3;
+var SERVER_INSTRUCTIONS = `Use check_environment before the first delegation. Use start_execution by default so long-running work cannot hit the MCP client's request timeout, then poll get_execution_status and relay meaningful progress. Make the first status check after roughly 15 seconds. Healthy long-running jobs should usually be checked about once per minute, medium jobs about every 2 minutes, and long tasks can be checked as slowly as about every 5 minutes while they remain healthy. Execution runs in a detached persistent worker and survives MCP or Codex restarts. There is no hard Claude deadline; after 15 minutes without activity the worker restarts Claude, for at most three attempts. Treat running, restarting, and cancelling as non-terminal states: keep polling and never report success or failure from an intermediate workspace snapshot. non-terminal Claude jobs must never be finalized to the user as if the task were done. Partial workspace diffs during these active states are not permission for Codex to intervene or patch code. In claude_write_only mode, while the job remains running, restarting, or cancelling, Codex must not modify files in that workspace, even to finish only the untouched half of a partial implementation. Treat a changing lastActivityAt or thinking progress as active work; do not cancel an active job merely because no file has appeared yet. Claude runs non-interactively: it must never ask the user questions, and missing essential information must be returned as a structured error. Long-running work must stay in the foreground and should emit periodic progress or use recoverable checkpoints so the worker can distinguish active work from a stall. Prefer event-driven monitoring over routine narration: short jobs may still emit a sparse heartbeat about every 3 minutes, medium jobs about every 4 minutes, and long jobs about every 5 minutes while they keep making progress. Read execution logs only when progress stalls, after a restart, or when terminal diagnosis is needed. Only call cancel_execution after the user explicitly asks to cancel; claude_write_only jobs enforce this at the tool boundary. Claude has fixed Read, Glob, Grep, Edit, Write, and unrestricted Bash permissions during delegated execution, so it can perform normal file CRUD and project commands without reconfirmation. Claude performs implementation plus relevant tests, builds, linters, and typechecks, but not previews or browser verification. After Claude completes, Codex must independently inspect and verify the workspace and perform any required preview or browser checks. If verification fails, delegate a focused repair plan to Claude and never directly patch code in claude_write_only mode. If Claude returns failed or environment_error, or cannot recover from interruption, stop, report exact evidence, and ask the user whether to wait, investigate, retry Claude, or explicitly authorize Codex takeover. Do not choose a takeover path without user authorization. When Codex must remain planner/reviewer only while Claude performs all edits, set executionMode to claude_write_only.`;
 var EXECUTION_MODE_SCHEMA = external_exports.enum(["standard", "claude_write_only"]).default("standard").describe(
   "Execution collaboration mode. Use claude_write_only when Codex should stay in a planner/reviewer role and Claude should perform all code changes inside the delegated run."
 );
 var executionJobManager = new ExecutionJobManager();
 function isExecutionResponseError(status) {
   return !["completed", "running", "restarting", "cancelling"].includes(status);
+}
+function classifyMonitoringTier(plan, acceptanceCriteria) {
+  if (plan.length < 1500 && acceptanceCriteria.length <= 3) {
+    return "short";
+  }
+  if (plan.length < 6e3 && acceptanceCriteria.length <= 8) {
+    return "medium";
+  }
+  return "long";
+}
+function getAdaptiveStatusPollIntervalMs(tier) {
+  switch (tier) {
+    case "short":
+      return 6e4;
+    case "medium":
+      return 12e4;
+    case "long":
+      return 3e5;
+  }
+}
+function shouldAllowDiagnosticLogRead(context) {
+  return context.status === "restarting" || context.status === "failed" || context.status === "environment_error" || context.stagnantPolls >= 2;
 }
 function getSyncWaitMs() {
   const configured = Number(process.env.CLAUDE_EXECUTOR_SYNC_WAIT_MS);
@@ -21867,31 +21891,30 @@ function getSyncWaitMs() {
   }
   return Math.min(Math.floor(configured), MAX_SYNC_WAIT_MS);
 }
-function getMinStatusPollIntervalMs() {
-  const configured = Number(process.env.CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS);
-  if (!Number.isFinite(configured)) {
-    return DEFAULT_MIN_STATUS_POLL_INTERVAL_MS;
-  }
-  return Math.max(0, Math.floor(configured));
+function getJobRootDirectory() {
+  return process.env.CLAUDE_EXECUTOR_JOB_ROOT ?? DEFAULT_JOB_ROOT;
 }
-function getMinLogPollIntervalMs() {
-  const configured = Number(
-    process.env.CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS
-  );
-  if (!Number.isFinite(configured)) {
-    return DEFAULT_MIN_LOG_POLL_INTERVAL_MS;
-  }
-  return Math.max(0, Math.floor(configured));
-}
-async function throttlePoll(pollMap, key, minIntervalMs) {
+async function throttlePoll(pollMap, key, minIntervalMs, baselineMs) {
   const lastPollAt = pollMap.get(key);
-  if (lastPollAt !== void 0) {
-    const remainingMs = minIntervalMs - (Date.now() - lastPollAt);
+  const anchorMs = lastPollAt ?? baselineMs;
+  if (anchorMs !== void 0) {
+    const remainingMs = minIntervalMs - (Date.now() - anchorMs);
     if (remainingMs > 0) {
       await new Promise((resolve2) => setTimeout(resolve2, remainingMs));
     }
   }
   pollMap.set(key, Date.now());
+}
+function buildMonitoringObservation(status, previous) {
+  const progressUpdatedAt = status.progress?.updatedAt ?? null;
+  const sameActivity = previous?.lastActivityAt === status.lastActivityAt && previous?.lastProgressUpdatedAt === progressUpdatedAt && previous?.lastStatus === status.status;
+  const stagnantPolls = status.status === "running" && sameActivity ? (previous?.stagnantPolls ?? 0) + 1 : 0;
+  return {
+    lastActivityAt: status.lastActivityAt,
+    lastProgressUpdatedAt: progressUpdatedAt,
+    lastStatus: status.status,
+    stagnantPolls
+  };
 }
 function execCommand2(command, args, timeoutMs = 15e3) {
   return new Promise((resolve2, reject) => {
@@ -21912,6 +21935,8 @@ function execCommand2(command, args, timeoutMs = 15e3) {
 function createServer() {
   const lastStatusPollAt = /* @__PURE__ */ new Map();
   const lastLogPollAt = /* @__PURE__ */ new Map();
+  const monitoringTierByJob = /* @__PURE__ */ new Map();
+  const monitoringObservationByJob = /* @__PURE__ */ new Map();
   const server = new McpServer(
     {
       name: SERVER_NAME,
@@ -21938,6 +21963,17 @@ function createServer() {
       timeoutSeconds,
       workspaceBefore
     };
+  }
+  async function getMonitoringTier(jobId) {
+    const cached2 = monitoringTierByJob.get(jobId);
+    if (cached2) return cached2;
+    const request = await readRequest(getJobRootDirectory(), jobId);
+    const tier = classifyMonitoringTier(
+      request.plan,
+      request.acceptanceCriteria ?? []
+    );
+    monitoringTierByJob.set(jobId, tier);
+    return tier;
   }
   server.tool(
     "check_environment",
@@ -22036,6 +22072,13 @@ function createServer() {
           timeoutSeconds,
           workspaceBefore
         });
+        monitoringTierByJob.set(
+          started.jobId,
+          classifyMonitoringTier(
+            params.plan,
+            params.acceptanceCriteria ?? []
+          )
+        );
         const result = await executionJobManager.waitForResultOrStatus(
           started.jobId,
           getSyncWaitMs()
@@ -22099,6 +22142,13 @@ function createServer() {
           timeoutSeconds,
           workspaceBefore
         });
+        monitoringTierByJob.set(
+          result.jobId,
+          classifyMonitoringTier(
+            params.plan,
+            params.acceptanceCriteria ?? []
+          )
+        );
         return {
           content: [
             {
@@ -22134,12 +22184,28 @@ function createServer() {
     },
     async ({ jobId }) => {
       try {
+        const previewStatus = await executionJobManager.getExecutionStatus(jobId);
+        const tier = await getMonitoringTier(jobId);
+        const previousObservation = monitoringObservationByJob.get(jobId);
+        const previewObservation = buildMonitoringObservation(
+          previewStatus,
+          previousObservation
+        );
+        const configured = Number(process.env.CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS);
+        const minIntervalMs = Number.isFinite(configured) ? Math.max(0, Math.floor(configured)) : previewStatus.status === "restarting" || previewObservation.stagnantPolls >= 2 ? 6e4 : getAdaptiveStatusPollIntervalMs(tier);
+        const hasPolledBefore = lastStatusPollAt.has(jobId);
+        const firstPollIntervalMs = Number.isFinite(configured) ? minIntervalMs : FIRST_STATUS_POLL_DELAY_MS;
         await throttlePoll(
           lastStatusPollAt,
           jobId,
-          getMinStatusPollIntervalMs()
+          hasPolledBefore ? minIntervalMs : firstPollIntervalMs,
+          hasPolledBefore ? void 0 : Date.parse(previewStatus.startedAt)
         );
         const result = await executionJobManager.getExecutionStatus(jobId);
+        monitoringObservationByJob.set(
+          jobId,
+          buildMonitoringObservation(result, previousObservation)
+        );
         return {
           content: [
             {
@@ -22178,15 +22244,38 @@ function createServer() {
     },
     async ({ jobId, stream, offset, limit }) => {
       try {
+        const status = await executionJobManager.getExecutionStatus(jobId);
+        const tier = await getMonitoringTier(jobId);
+        const observation = monitoringObservationByJob.get(jobId) ?? buildMonitoringObservation(status);
+        const configured = Number(
+          process.env.CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS
+        );
+        const allowDiagnostic = shouldAllowDiagnosticLogRead({
+          status: status.status,
+          failureKind: status.failureKind,
+          stagnantPolls: observation.stagnantPolls
+        });
+        const minIntervalMs = Number.isFinite(configured) ? Math.max(0, Math.floor(configured)) : allowDiagnostic ? 0 : getAdaptiveStatusPollIntervalMs(tier);
         await throttlePoll(
           lastLogPollAt,
           `${jobId}:${stream}`,
-          getMinLogPollIntervalMs()
+          minIntervalMs
         );
+        let effectiveOffset = offset;
+        if (allowDiagnostic && offset === 0) {
+          try {
+            const logStat = await fs4.stat(
+              jobPath(getJobRootDirectory(), jobId, `${stream}.log`)
+            );
+            effectiveOffset = Math.max(0, logStat.size - limit);
+          } catch {
+            effectiveOffset = offset;
+          }
+        }
         const result = await executionJobManager.getExecutionLogs(
           jobId,
           stream,
-          offset,
+          effectiveOffset,
           limit
         );
         return {

@@ -96,7 +96,13 @@ describe("plugin structure", () => {
       "Do not read logs on every loop just because they are available."
     );
     expect(content).toContain(
-      "allow one sparse heartbeat about every 3 minutes"
+      "Non-terminal Claude jobs must never be presented to the user as finished"
+    );
+    expect(content).toContain(
+      "long healthy jobs may be checked as slowly as every 5 minutes"
+    );
+    expect(content).toContain(
+      "Short jobs may still emit a sparse heartbeat about every 3 minutes"
     );
   });
 

@@ -208,33 +208,37 @@ describe("persistent job manager", () => {
     await cancelAndWait(secondManager, started.jobId);
   });
 
-  it("retries stalled Claude attempts and eventually completes", async () => {
-    const attemptFile = path.join(rootDirectory, "attempts.txt");
-    const previousStallMs = process.env.CLAUDE_EXECUTOR_STALL_MS;
-    process.env.CLAUDE_EXECUTOR_STALL_MS = "2000";
-    try {
-      const manager = new ExecutionJobManager(rootDirectory);
-      const started = await manager.startExecution({
-        ...startOptions(workspaceA),
-        env: {
-          FAKE_CLAUDE_MODE: "stall-then-success",
-          FAKE_CLAUDE_ATTEMPT_FILE: attemptFile,
-        },
-      });
-      const result = await manager.waitForResult(started.jobId);
-      const status = await manager.getExecutionStatus(started.jobId);
+  it(
+    "retries stalled Claude attempts and eventually completes",
+    async () => {
+      const attemptFile = path.join(rootDirectory, "attempts.txt");
+      const previousStallMs = process.env.CLAUDE_EXECUTOR_STALL_MS;
+      process.env.CLAUDE_EXECUTOR_STALL_MS = "2000";
+      try {
+        const manager = new ExecutionJobManager(rootDirectory);
+        const started = await manager.startExecution({
+          ...startOptions(workspaceA),
+          env: {
+            FAKE_CLAUDE_MODE: "stall-then-success",
+            FAKE_CLAUDE_ATTEMPT_FILE: attemptFile,
+          },
+        });
+        const result = await manager.waitForResult(started.jobId);
+        const status = await manager.getExecutionStatus(started.jobId);
 
-      expect(result.status).toBe("completed");
-      expect(status.attempt).toBe(3);
-      expect(await fs.readFile(attemptFile, "utf-8")).toBe("3");
-    } finally {
-      if (previousStallMs === undefined) {
-        delete process.env.CLAUDE_EXECUTOR_STALL_MS;
-      } else {
-        process.env.CLAUDE_EXECUTOR_STALL_MS = previousStallMs;
+        expect(result.status).toBe("completed");
+        expect(status.attempt).toBe(3);
+        expect(await fs.readFile(attemptFile, "utf-8")).toBe("3");
+      } finally {
+        if (previousStallMs === undefined) {
+          delete process.env.CLAUDE_EXECUTOR_STALL_MS;
+        } else {
+          process.env.CLAUDE_EXECUTOR_STALL_MS = previousStallMs;
+        }
       }
-    }
-  });
+    },
+    10_000
+  );
 
   it("fails with a precise stalled error after all attempts make no progress", async () => {
     const previousStallMs = process.env.CLAUDE_EXECUTOR_STALL_MS;

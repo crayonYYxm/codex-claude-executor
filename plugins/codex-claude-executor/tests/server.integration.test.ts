@@ -26,8 +26,10 @@ afterAll(() => {
 
 async function createClient(
   mode: string,
-  extraEnv: Record<string, string> = {}
+  extraEnv: Record<string, string> = {},
+  options: { includeThrottleOverrides?: boolean } = {}
 ) {
+  const includeThrottleOverrides = options.includeThrottleOverrides ?? true;
   const jobRoot =
     extraEnv.CLAUDE_EXECUTOR_JOB_ROOT ??
     fs.mkdtempSync(path.join(os.tmpdir(), `server-integration-${mode}-`));
@@ -39,8 +41,12 @@ async function createClient(
       CLAUDE_BIN: FAKE_CLAUDE,
       FAKE_CLAUDE_MODE: mode,
       CLAUDE_EXECUTOR_JOB_ROOT: jobRoot,
-      CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "0",
-      CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS: "0",
+      ...(includeThrottleOverrides
+        ? {
+            CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "0",
+            CLAUDE_EXECUTOR_MIN_LOG_POLL_INTERVAL_MS: "0",
+          }
+        : {}),
       ...extraEnv,
     },
   });
@@ -613,6 +619,92 @@ describe("MCP Server async execution lifecycle", () => {
         arguments: { jobId: startData.jobId, stream: "stderr", offset: 0, limit: 256 },
       });
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(60);
+
+      await client.callTool({
+        name: "cancel_execution",
+        arguments: { jobId: startData.jobId },
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it(
+    "uses the default 15 second delay before a first status poll when adaptive throttling is active",
+    async () => {
+      const { client } = await createClient(
+        "timeout",
+        {},
+        { includeThrottleOverrides: false }
+      );
+      try {
+        const startResult = await client.callTool({
+          name: "start_execution",
+          arguments: {
+            workingDirectory: "/tmp",
+            plan: "Adaptive first poll plan",
+          },
+        });
+        const startData = JSON.parse(
+          (startResult.content as Array<{ type: string; text: string }>)[0].text
+        );
+
+        const startedAt = Date.now();
+        const statusResult = await client.callTool({
+          name: "get_execution_status",
+          arguments: { jobId: startData.jobId },
+        });
+        const elapsedMs = Date.now() - startedAt;
+        const statusData = JSON.parse(
+          (statusResult.content as Array<{ type: string; text: string }>)[0].text
+        );
+
+        expect(statusData.status).toBe("running");
+        expect(elapsedMs).toBeGreaterThanOrEqual(14_000);
+
+        await client.callTool({
+          name: "cancel_execution",
+          arguments: { jobId: startData.jobId },
+        });
+      } finally {
+        await client.close();
+      }
+    },
+    20_000
+  );
+
+  it("lets an explicit poll override bypass the adaptive first-poll delay", async () => {
+    const { client } = await createClient(
+      "timeout",
+      {
+        CLAUDE_EXECUTOR_MIN_POLL_INTERVAL_MS: "0",
+      },
+      { includeThrottleOverrides: false }
+    );
+    try {
+      const startResult = await client.callTool({
+        name: "start_execution",
+        arguments: {
+          workingDirectory: "/tmp",
+          plan: "Override first poll plan",
+        },
+      });
+      const startData = JSON.parse(
+        (startResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      const startedAt = Date.now();
+      const statusResult = await client.callTool({
+        name: "get_execution_status",
+        arguments: { jobId: startData.jobId },
+      });
+      const elapsedMs = Date.now() - startedAt;
+      const statusData = JSON.parse(
+        (statusResult.content as Array<{ type: string; text: string }>)[0].text
+      );
+
+      expect(statusData.status).toBe("running");
+      expect(elapsedMs).toBeLessThan(1_000);
 
       await client.callTool({
         name: "cancel_execution",

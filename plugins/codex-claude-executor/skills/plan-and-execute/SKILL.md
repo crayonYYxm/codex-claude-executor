@@ -34,12 +34,13 @@ Codex plans and verifies. Claude edits the workspace and runs code-level checks.
 1. Use `start_execution` by default for implementation and repair runs so the MCP client never waits on the long-running Claude request.
 2. The detached persistent worker survives MCP and Codex restarts. Leave `timeoutSeconds` omitted; it is retained only for compatibility and the worker always runs without a hard deadline.
 3. Poll `get_execution_status` until the job reaches a terminal state. `running`, `restarting`, and `cancelling` are never final outcomes; do not report success or failure from an intermediate file check. Partial workspace diffs during these states are not permission for Codex to intervene or patch code. Make the first status check after roughly 15 seconds. After that, healthy long-running jobs should usually be checked about once per minute.
-4. Relay meaningful changes from `progress.message` to the user while Claude is running. Do not invent percentages. Prefer event-driven updates over routine narration, and allow one sparse heartbeat about every 3 minutes at most while the job remains healthy.
-5. Use `get_execution_logs` when progress stalls, after a restart, or when a terminal error needs diagnosis. Do not read logs on every loop just because they are available.
-6. Claude must run relevant tests, builds, lint checks, and typechecks before returning success.
-7. Keep long-running work observable and recoverable: Claude should run the main work in the foreground, emit periodic progress for long commands, and split large work into recoverable checkpoints.
-8. The worker automatically restarts Claude after 15 minutes without activity, for at most three total attempts.
-9. Never call `cancel_execution` unless the user explicitly asks to cancel. For `claude_write_only`, pass `userRequested: true` only after that explicit request.
+4. Non-terminal Claude jobs must never be presented to the user as finished. If the job is still `running`, `restarting`, or `cancelling`, keep monitoring unless the user explicitly stops or changes topic.
+5. Relay meaningful changes from `progress.message` to the user while Claude is running. Do not invent percentages. Prefer event-driven updates over routine narration. Short jobs may still emit a sparse heartbeat about every 3 minutes, medium jobs about every 4 minutes, and long healthy jobs may be checked as slowly as every 5 minutes.
+6. Use `get_execution_logs` when progress stalls, after a restart, or when a terminal error needs diagnosis. Do not read logs on every loop just because they are available.
+7. Claude must run relevant tests, builds, lint checks, and typechecks before returning success.
+8. Keep long-running work observable and recoverable: Claude should run the main work in the foreground, emit periodic progress for long commands, and split large work into recoverable checkpoints.
+9. The worker automatically restarts Claude after 15 minutes without activity, for at most three total attempts.
+10. Never call `cancel_execution` unless the user explicitly asks to cancel. For `claude_write_only`, pass `userRequested: true` only after that explicit request.
 
 ### Phase 3: Handle Claude Result
 

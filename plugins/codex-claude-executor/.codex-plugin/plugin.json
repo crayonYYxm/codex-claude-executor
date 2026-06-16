@@ -1,6 +1,6 @@
 {
   "name": "codex-claude-executor",
-  "version": "0.1.0+codex.20260615172334",
+  "version": "0.1.0+codex.20260616154841",
   "description": "Let Codex plan, delegate to Claude Code, and autonomously verify and repair implementation work.",
   "author": {
     "name": "xumeng",
